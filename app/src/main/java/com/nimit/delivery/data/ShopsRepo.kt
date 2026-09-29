@@ -98,7 +98,7 @@ object ShopsRepo {
         return list to zone
     }
 
-    suspend fun ads() = try { all("ads") } catch (_: Exception) { emptyList() }
+    suspend fun ads() = try { all("ads").filter { it.second["active"] != false }.sortedBy { it.second.dbl("order") ?: 0.0 } } catch (_: Exception) { emptyList() }
     suspend fun categoryButtons() = try { all("categoryButtons").sortedBy { it.second.dbl("order") ?: 0.0 } } catch (_: Exception) { emptyList() }
     suspend fun flashDeals(): List<Pair<String, Doc>> = try {
         val now = System.currentTimeMillis()

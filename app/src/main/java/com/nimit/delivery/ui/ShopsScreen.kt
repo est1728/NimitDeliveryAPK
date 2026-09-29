@@ -34,6 +34,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -474,7 +475,12 @@ private fun AdsPager(ads: List<Pair<String, Doc>>, pick: (String, String) -> Uni
             Box(Modifier.fillMaxWidth().aspectRatio(2.1f).background(N.B50).clickable {
                 if (a.str("shopId").isNotEmpty()) pick(a.str("shopId"), a.str("shopName")) else if (a.str("linkUrl").isNotEmpty()) openUrl(a.str("linkUrl"))
             }) {
-                if (a.str("imgUrl").isNotEmpty()) AsyncImage(a.str("imgUrl"), null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                val img = adImg(a)
+                if (img.isNotEmpty()) AdImage(img, Modifier.fillMaxSize())
+                else {
+                    Box(Modifier.fillMaxSize().background(Brush.linearGradient(listOf(N.B700, N.B900))))
+                    Text("ไม่พบรูป · " + a.keys.joinToString(","), fontSize = 10.sp, color = Color.White.copy(alpha = 0.7f), modifier = Modifier.align(Alignment.TopStart).padding(8.dp))
+                }
                 if (a.str("caption").isNotEmpty()) Text(a.str("caption"), fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Color.White,
                     modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth().background(Brush.verticalGradient(listOf(Color.Transparent, N.B900.copy(alpha = 0.75f)))).padding(start = 16.dp, end = 16.dp, top = 30.dp, bottom = 14.dp))
             }
@@ -504,7 +510,7 @@ private fun ShopCard(s: Shop, open: Boolean, fav: Boolean, onClick: () -> Unit, 
         }
         Column(Modifier.padding(start = 14.dp, end = 14.dp, bottom = 14.dp)) {
             Row(verticalAlignment = Alignment.Top) {
-                Box(Modifier.offset(y = (-28).dp).size(64.dp).shadow(6.dp, RoundedCornerShape(16.dp)).clip(RoundedCornerShape(16.dp)).background(N.B50).border(3.dp, Color.White, RoundedCornerShape(16.dp)), contentAlignment = Alignment.Center) {
+                Box(Modifier.offset(y = (-28).dp).size(64.dp).clip(RoundedCornerShape(16.dp)).background(N.B50).border(3.dp, Color.White, RoundedCornerShape(16.dp)), contentAlignment = Alignment.Center) {
                     if (s.avatarUrl.isNotEmpty()) AsyncImage(s.avatarUrl, null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
                     else PathIcon("M20 4H4v2l8 5 8-5V4zm0 4.236l-8 5-8-5V20h16V8.236z", N.B700, 28.dp)
                 }
@@ -542,4 +548,24 @@ private fun ShopCard(s: Shop, open: Boolean, fav: Boolean, onClick: () -> Unit, 
     Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
         PathIcon(icon, color, 14.dp); Text(text, fontSize = 11.5.sp, color = color)
     }
+}
+
+private fun adImg(a: Doc): String {
+    for (k in listOf("imgUrl", "imageUrl", "image", "img", "photo", "url", "banner")) { val v = a.str(k); if (v.isNotEmpty()) return v }
+    return ""
+}
+
+@Composable
+private fun AdImage(src: String, modifier: Modifier = Modifier) {
+    if (src.startsWith("data:image")) {
+        val bmp by produceState<androidx.compose.ui.graphics.ImageBitmap?>(null, src) {
+            value = withContext(Dispatchers.Default) {
+                try {
+                    val b = android.util.Base64.decode(src.substringAfter("base64,"), android.util.Base64.DEFAULT)
+                    android.graphics.BitmapFactory.decodeByteArray(b, 0, b.size)?.asImageBitmap()
+                } catch (_: Exception) { null }
+            }
+        }
+        bmp?.let { Image(it, null, contentScale = ContentScale.Crop, modifier = modifier) }
+    } else AsyncImage(src, null, contentScale = ContentScale.Crop, modifier = modifier)
 }

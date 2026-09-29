@@ -4,10 +4,21 @@ import android.app.Application
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.os.Build
+import coil.ImageLoader
+import coil.ImageLoaderFactory
+import coil.disk.DiskCache
+import coil.memory.MemoryCache
 import com.google.firebase.FirebaseApp
 import com.google.firebase.FirebaseOptions
 
-class NimitApp : Application() {
+class NimitApp : Application(), ImageLoaderFactory {
+    override fun newImageLoader(): ImageLoader = ImageLoader.Builder(this)
+        .memoryCache { MemoryCache.Builder(this).maxSizePercent(0.25).build() }
+        .diskCache { DiskCache.Builder().directory(cacheDir.resolve("img")).maxSizeBytes(200L * 1024 * 1024).build() }
+        .respectCacheHeaders(false)
+        .crossfade(true)
+        .build()
+
     override fun onCreate() {
         super.onCreate()
         // ใช้ Firebase project เดียวกับเว็บ (nimit-delivery) -> ข้อมูลชุดเดียวกัน

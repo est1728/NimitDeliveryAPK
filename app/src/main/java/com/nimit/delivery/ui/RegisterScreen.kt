@@ -41,6 +41,7 @@ import com.google.firebase.firestore.firestore
 import com.nimit.delivery.data.Session
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.tasks.await
 import org.json.JSONArray
 import org.json.JSONObject
@@ -87,8 +88,17 @@ fun RegisterScreen(session: Session, onBack: () -> Unit, onDone: () -> Unit) {
     val map = remember {
         Configuration.getInstance().load(ctx, ctx.getSharedPreferences("osm", 0))
         Configuration.getInstance().userAgentValue = ctx.packageName
+        Configuration.getInstance().apply {
+            osmdroidBasePath = java.io.File(ctx.filesDir, "osmdroid")
+            osmdroidTileCache = java.io.File(ctx.cacheDir, "osmdroid/tiles")
+            tileDownloadThreads = 6.toShort()
+            tileFileSystemThreads = 4.toShort()
+            expirationOverrideDuration = 7L * 24 * 3600 * 1000
+        }
         MapView(ctx).apply {
             setMultiTouchControls(true)
+            setTileSource(esriSat)
+            isTilesScaledToDpi = true
             controller.setZoom(13.0)
             controller.setCenter(GeoPoint(13.7563, 100.5018))
             setOnTouchListener { v, e ->
@@ -114,14 +124,19 @@ fun RegisterScreen(session: Session, onBack: () -> Unit, onDone: () -> Unit) {
             override fun longPressHelper(p: GeoPoint): Boolean = false
         }))
     }
-    LaunchedEffect(sat) { map.setTileSource(if (sat) esriSat else TileSourceFactory.MAPNIK) }
+    LaunchedEffect(sat) {
+        val want = if (sat) esriSat else TileSourceFactory.MAPNIK
+        if (map.tileProvider.tileSource.name() != want.name()) map.setTileSource(want)
+    }
     DisposableEffect(Unit) { map.onResume(); onDispose { map.onPause(); map.onDetach() } }
 
     fun fetchLocation() {
         scope.launch {
             try {
-                val loc = LocationServices.getFusedLocationProviderClient(ctx)
-                    .getCurrentLocation(Priority.PRIORITY_HIGH_ACCURACY, null).await()
+                val client = LocationServices.getFusedLocationProviderClient(ctx)
+                val last = try { client.lastLocation.await() } catch (_: Exception) { null }
+                val loc = if (last != null && System.currentTimeMillis() - last.time < 120_000) last
+                    else withTimeoutOrNull(10_000) { client.getCurrentLocation(Priority.PRIORITY_HIGH_ACCURACY, null).await() }
                 if (loc != null) place(loc.latitude, loc.longitude)
                 else Toast.makeText(ctx, "ไม่พบตำแหน่ง ลองปักหมุดเองบนแผนที่ได้เลย", Toast.LENGTH_LONG).show()
             } catch (_: Exception) {
