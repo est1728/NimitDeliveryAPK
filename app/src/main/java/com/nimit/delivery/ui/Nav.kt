@@ -13,6 +13,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.nimit.delivery.data.Session
+import org.json.JSONObject
 
 // หน้าที่ยังไม่ได้แปลง (ทยอยเปลี่ยนเป็นหน้าจริงทีละหน้า)
 private val pendingRoutes = listOf(
@@ -32,7 +33,15 @@ fun NimitNav() {
         nav.navigate(r ?: "shops") { popUpTo("login") { inclusive = true } }
     }
 
-    NavHost(nav, startDestination = "login") {
+    // เคยล็อกอิน+ลงทะเบียนแล้ว -> เข้าหน้าช้อปเลย
+    val startRoute = remember {
+        val ok = try {
+            !session.customerPhone.isNullOrEmpty() && JSONObject(session.customerData ?: "{}").optBoolean("registered", false)
+        } catch (_: Exception) { false }
+        if (ok) "shops" else "login"
+    }
+
+    NavHost(nav, startDestination = startRoute) {
         composable("login") {
             LoginScreen(
                 session,
