@@ -52,15 +52,17 @@ object P {
     )
 }
 
+private val pathIconCache = HashMap<String, ImageVector>()
+
 @Composable
 fun PathIcon(d: String, tint: Color, size: Dp, stroke: Boolean = false, modifier: Modifier = Modifier) {
-    val v = remember(d, stroke) {
+    val v = remember(d, stroke) { pathIconCache.getOrPut("$stroke|$d") {
         ImageVector.Builder(defaultWidth = 24.dp, defaultHeight = 24.dp, viewportWidth = 24f, viewportHeight = 24f).addPath(
             pathData = PathParser().parsePathString(d).toNodes(),
             fill = if (stroke) null else SolidColor(Color.Black),
             stroke = if (stroke) SolidColor(Color.Black) else null,
             strokeLineWidth = 2f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round
         ).build()
-    }
+    } }
     Icon(v, null, tint = tint, modifier = modifier.size(size))
 }

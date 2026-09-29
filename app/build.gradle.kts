@@ -16,6 +16,24 @@ android {
         versionName = "1.0.0"
         setProperty("archivesBaseName", "NimitDelivery")
     }
+    signingConfigs {
+        create("nimit") {
+            storeFile = file("nimit.keystore")
+            storePassword = "nimit1234"
+            keyAlias = "nimit"
+            keyPassword = "nimit1234"
+        }
+    }
+    buildTypes {
+        debug { signingConfig = signingConfigs.getByName("nimit") }
+        release {
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            signingConfig = signingConfigs.getByName("nimit")
+        }
+    }
+    lint { checkReleaseBuilds = false }
     buildFeatures { compose = true }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17

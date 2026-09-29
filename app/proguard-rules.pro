@@ -1,0 +1,4 @@
+-dontwarn **
+-keepattributes *Annotation*,Signature,InnerClasses,EnclosingMethod,SourceFile,LineNumberTable
+-keep class org.osmdroid.** { *; }
+-keep class com.nimit.delivery.** { *; }
