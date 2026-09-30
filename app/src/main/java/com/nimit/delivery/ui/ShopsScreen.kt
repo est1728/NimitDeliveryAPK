@@ -176,13 +176,16 @@ fun ShopsScreen(session: Session, onOpenShop: (String, String) -> Unit, onNaviga
                                 Spacer(Modifier.width(10.dp))
                                 Column {
                                     Text("Nimit Delivery", fontSize = 16.5.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
-                                    Text(
-                                        loginText, fontSize = 11.sp, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                                        modifier = Modifier.padding(top = 5.dp).clip(RoundedCornerShape(12.dp))
+                                    Row(
+                                        Modifier.padding(top = 5.dp).clip(RoundedCornerShape(12.dp))
                                             .background(Color.White.copy(alpha = 0.14f))
                                             .clickable { onNavigate(if (phone.isNotEmpty()) "address" else "login") }
-                                            .padding(horizontal = 9.dp, vertical = 3.dp)
-                                    )
+                                            .padding(horizontal = 9.dp, vertical = 3.dp),
+                                        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)
+                                    ) {
+                                        Text(loginText, fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                                        PathIcon(P.TRI, Color.White.copy(alpha = 0.75f), 11.dp)
+                                    }
                                 }
                             }
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -231,13 +234,13 @@ fun ShopsScreen(session: Session, onOpenShop: (String, String) -> Unit, onNaviga
                             .padding(horizontal = 15.dp, vertical = 14.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Box(Modifier.size(38.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.16f)), contentAlignment = Alignment.Center) { PathIcon(P.TAG, Color.White, 20.dp) }
+                        Box(Modifier.size(40.dp).clip(RoundedCornerShape(12.dp)).background(Color.White.copy(alpha = 0.18f)), contentAlignment = Alignment.Center) { PathIcon(P.TICKET, Color.White, 20.dp) }
                         Spacer(Modifier.width(12.dp))
                         Column(Modifier.weight(1f)) {
                             Text(if (coupons > 1) "มีคูปองส่วนลด $coupons ใบรอให้เก็บ!" else "มีคูปองส่วนลดรอให้เก็บ!", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.White)
                             Text("แตะเพื่อดูคูปองทั้งหมด", fontSize = 11.5.sp, color = Color.White.copy(alpha = 0.8f))
                         }
-                        PathIcon(P.CHEVRON, Color.White, 20.dp)
+                        PathIcon(P.TRI, Color.White.copy(alpha = 0.7f), 16.dp)
                     }
                 }
                 // FLASH
@@ -370,7 +373,7 @@ fun ShopsScreen(session: Session, onOpenShop: (String, String) -> Unit, onNaviga
                     if (cartCount > 0) Badge(cartCount.toString(), Modifier.align(Alignment.TopEnd))
                 }
             }
-            NavItem(P.TAG, "คูปอง", false, Modifier.weight(1f)) { onNavigate("coupon") }
+            NavItem(P.TICKET, "คูปอง", false, Modifier.weight(1f)) { onNavigate("coupon") }
             NavItem(P.SOCIAL, "โซเชียล", false, Modifier.weight(1f).alpha(0.45f)) { Toast.makeText(ctx, "ระบบโซเชียลเร็วๆ นี้ครับ", Toast.LENGTH_SHORT).show() }
         }
 
