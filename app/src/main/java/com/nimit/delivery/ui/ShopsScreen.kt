@@ -7,6 +7,12 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
@@ -35,9 +41,11 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
@@ -164,7 +172,7 @@ fun ShopsScreen(session: Session, onOpenShop: (String, String) -> Unit, onNaviga
                     ) {
                         Row(Modifier.fillMaxWidth().padding(bottom = 12.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Top) {
                             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-                                Logo(40)
+                                Logo(40, float = true)
                                 Spacer(Modifier.width(10.dp))
                                 Column {
                                     Text("Nimit Delivery", fontSize = 16.5.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
@@ -236,7 +244,10 @@ fun ShopsScreen(session: Session, onOpenShop: (String, String) -> Unit, onNaviga
                 if (liveFlash.isNotEmpty()) item {
                     Column(Modifier.padding(top = 18.dp)) {
                         Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 11.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                            Text("ดีลลับ ลดแรง", fontSize = 15.5.sp, fontWeight = FontWeight.SemiBold, color = N.Red500)
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Box(Modifier.size(width = 4.dp, height = 16.dp).clip(RoundedCornerShape(2.dp)).background(N.Red500))
+                                Text("ดีลลับ ลดแรง", fontSize = 15.5.sp, fontWeight = FontWeight.SemiBold, color = N.Red500)
+                            }
                             FlashCountdown(liveFlash.first().second.lng("endAt") ?: 0L)
                         }
                         LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(11.dp)) {
@@ -408,8 +419,12 @@ private fun cartCount(session: Session): Int = try {
     n
 } catch (_: Exception) { 0 }
 
-@Composable private fun Logo(size: Int) {
-    Box(Modifier.size(size.dp).clip(RoundedCornerShape((size / 4).dp)).background(N.B800)) {
+@Composable private fun Logo(size: Int, float: Boolean = false) {
+    val y: State<Float>? = if (float) rememberInfiniteTransition(label = "logo").animateFloat(
+        0f, -3f, infiniteRepeatable(tween(1600, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "logoY"
+    ) else null
+    Box(Modifier.graphicsLayer { translationY = (y?.value ?: 0f) * density }.size(size.dp).clip(RoundedCornerShape((size / 4).dp)).background(N.B800)
+        .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape((size / 4).dp))) {
         androidx.compose.foundation.Image(painterResource(R.drawable.logo), null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
     }
 }
@@ -439,7 +454,10 @@ private fun cartCount(session: Session): Int = try {
 }
 
 @Composable private fun SectionTitle(t: String, top: Int) {
-    Text(t, fontSize = 15.5.sp, fontWeight = FontWeight.SemiBold, color = N.Ink900, modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = top.dp, bottom = 11.dp))
+    Row(Modifier.padding(start = 16.dp, end = 16.dp, top = top.dp, bottom = 11.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Box(Modifier.size(width = 4.dp, height = 16.dp).clip(RoundedCornerShape(2.dp)).background(N.B600))
+        Text(t, fontSize = 15.5.sp, fontWeight = FontWeight.SemiBold, color = N.Ink900)
+    }
 }
 
 @Composable private fun NavItem(icon: String, label: String, active: Boolean, modifier: Modifier, onClick: () -> Unit) {
@@ -572,6 +590,13 @@ private fun FlashCountdown(endAt: Long) {
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     LaunchedEffect(Unit) { while (true) { delay(1000); now = System.currentTimeMillis() } }
     val left = (endAt - now).coerceAtLeast(0) / 1000
-    Text("%02d:%02d:%02d".format(left / 3600, left % 3600 / 60, left % 60), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = N.Red500,
-        modifier = Modifier.clip(RoundedCornerShape(10.dp)).background(N.Red100).padding(horizontal = 9.dp, vertical = 4.dp))
+    val pulse = rememberInfiniteTransition(label = "dot").animateFloat(
+        1f, 0.25f, infiniteRepeatable(tween(1000, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "dotA"
+    )
+    Row(Modifier.clip(RoundedCornerShape(20.dp)).background(N.Ink900).padding(start = 8.dp, end = 10.dp, top = 4.dp, bottom = 4.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+        Box(Modifier.size(6.dp).graphicsLayer { alpha = pulse.value }.clip(CircleShape).background(N.Red500))
+        Text("%02d:%02d:%02d".format(left / 3600, left % 3600 / 60, left % 60), style = TextStyle(fontFeatureSettings = "tnum"),
+            fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
+    }
 }
