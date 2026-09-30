@@ -352,9 +352,11 @@ fun ShopsScreen(session: Session, onOpenShop: (String, String) -> Unit, onNaviga
                 Spacer(Modifier.width(10.dp))
                 Box(Modifier.weight(1f)) { SearchBox(light = true) { onNavigate("search") } }
                 Spacer(Modifier.width(10.dp))
-                Box(Modifier.size(38.dp).clip(CircleShape).background(N.B50).clickable { onNavigate("cart") }, contentAlignment = Alignment.Center) {
-                    PathIcon(P.CART, N.B700, 20.dp)
-                    if (cartCount > 0) Badge(cartCount.toString(), Modifier.align(Alignment.TopEnd))
+                Box {
+                    Box(Modifier.size(38.dp).clip(CircleShape).background(N.B50).clickable { onNavigate("cart") }, contentAlignment = Alignment.Center) {
+                        PathIcon(P.CART, N.B700, 20.dp)
+                    }
+                    if (cartCount > 0) Badge(if (cartCount > 99) "99+" else cartCount.toString(), Modifier.align(Alignment.TopEnd))
                 }
             }
         }
@@ -364,13 +366,15 @@ fun ShopsScreen(session: Session, onOpenShop: (String, String) -> Unit, onNaviga
             NavItem(P.HOME, "หน้าหลัก", true, Modifier.weight(1f)) {}
             NavItem(P.HISTORY, "ประวัติ", false, Modifier.weight(1f)) { onNavigate("reorder") }
             Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                Box(
-                    Modifier.offset(y = (-16).dp).size(50.dp).shadow(10.dp, CircleShape).clip(CircleShape)
-                        .background(Brush.linearGradient(listOf(N.B500, N.B700))).border(4.dp, Color.White, CircleShape).clickable { onNavigate("cart") },
-                    contentAlignment = Alignment.Center
-                ) {
-                    PathIcon(P.CART, Color.White, 22.dp)
-                    if (cartCount > 0) Badge(cartCount.toString(), Modifier.align(Alignment.TopEnd))
+                Box(Modifier.offset(y = (-16).dp).size(50.dp)) {
+                    Box(
+                        Modifier.fillMaxSize().shadow(10.dp, CircleShape).clip(CircleShape)
+                            .background(Brush.linearGradient(listOf(N.B500, N.B700))).border(4.dp, Color.White, CircleShape).clickable { onNavigate("cart") },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        PathIcon(P.CART, Color.White, 22.dp)
+                    }
+                    if (cartCount > 0) Badge(if (cartCount > 99) "99+" else cartCount.toString(), Modifier.align(Alignment.TopEnd))
                 }
             }
             NavItem(P.TICKET, "คูปอง", false, Modifier.weight(1f)) { onNavigate("coupon") }
@@ -433,13 +437,16 @@ private fun cartCount(session: Session): Int = try {
 }
 
 @Composable private fun Badge(t: String, modifier: Modifier) {
-    Text(t, fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Color.White, textAlign = TextAlign.Center,
-        modifier = modifier.offset(x = 3.dp, y = (-3).dp).defaultMinSize(minWidth = 16.dp).height(16.dp).clip(RoundedCornerShape(20.dp)).background(N.Red500).padding(horizontal = 3.dp))
+    Box(modifier.offset(x = 3.dp, y = (-3).dp).defaultMinSize(minWidth = 16.dp).height(16.dp).clip(RoundedCornerShape(20.dp)).background(N.Red500).padding(horizontal = 4.dp), contentAlignment = Alignment.Center) {
+        Text(t, fontSize = 9.sp, lineHeight = 10.sp, fontWeight = FontWeight.Bold, color = Color.White, textAlign = TextAlign.Center, maxLines = 1)
+    }
 }
 
 @Composable private fun CircleBtn(icon: String, badge: Int, onClick: () -> Unit) {
-    Box(Modifier.size(36.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.13f)).clickable { onClick() }, contentAlignment = Alignment.Center) {
-        PathIcon(icon, Color.White, 20.dp)
+    Box {
+        Box(Modifier.size(36.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.13f)).clickable { onClick() }, contentAlignment = Alignment.Center) {
+            PathIcon(icon, Color.White, 20.dp)
+        }
         if (badge > 0) Badge(if (badge > 99) "99+" else badge.toString(), Modifier.align(Alignment.TopEnd))
     }
 }
