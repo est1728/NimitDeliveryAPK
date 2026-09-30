@@ -85,7 +85,7 @@ fun ShopsScreen(session: Session, onOpenShop: (String, String) -> Unit, onNaviga
     var favs by remember {
         mutableStateOf(try { JSONArray(session.favoriteShops ?: "[]").let { a -> (0 until a.length()).map { a.getString(it) }.toSet() } } catch (_: Exception) { emptySet<String>() })
     }
-    var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    var minuteTick by remember { mutableIntStateOf(0) }
     val cartCount = remember(shops) { cartCount(session) }
 
     val customer = remember { try { JSONObject(session.customerData ?: "{}") } catch (_: Exception) { JSONObject() } }
@@ -121,7 +121,7 @@ fun ShopsScreen(session: Session, onOpenShop: (String, String) -> Unit, onNaviga
         }
     }
     LaunchedEffect(Unit) { loadAll() }
-    LaunchedEffect(Unit) { while (true) { delay(1000); now = System.currentTimeMillis() } }
+    LaunchedEffect(Unit) { while (true) { delay(60_000); minuteTick++ } }
 
     fun pick(id: String, name: String) { onOpenShop(id, name) }
     fun openUrl(u: String) { try { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(u))) } catch (_: Exception) {} }
@@ -133,7 +133,7 @@ fun ShopsScreen(session: Session, onOpenShop: (String, String) -> Unit, onNaviga
     val listState = rememberLazyListState()
     val showSticky by remember { derivedStateOf { listState.firstVisibleItemIndex >= 1 } }
 
-    val open = remember(shops, filters, favs) {
+    val open = remember(shops, filters, favs, minuteTick) {
         var out = shops.toList()
         if ("fav" in filters) out = out.filter { it.id in favs }
         if ("open" in filters) out = out.filter { it.openNow() }
@@ -144,10 +144,9 @@ fun ShopsScreen(session: Session, onOpenShop: (String, String) -> Unit, onNaviga
         }
         out
     }
-    val openList = open.filter { it.openNow() }
-    val closedList = open.filter { !it.openNow() }
-    val popular = remember(shops) { shops.filter { it.openNow() }.sortedByDescending { it.score }.take(5) }
-    val liveFlash = flash.filter { (it.second.lng("endAt") ?: 0L) > now }
+    val (openList, closedList) = remember(open, minuteTick) { open.partition { it.openNow() } }
+    val popular = remember(shops, minuteTick) { shops.filter { it.openNow() }.sortedByDescending { it.score }.take(5) }
+    val liveFlash = remember(flash, minuteTick) { flash.filter { (it.second.lng("endAt") ?: 0L) > System.currentTimeMillis() } }
 
     Box(Modifier.fillMaxSize().background(N.Bg)) {
         PullToRefreshBox(
@@ -235,12 +234,10 @@ fun ShopsScreen(session: Session, onOpenShop: (String, String) -> Unit, onNaviga
                 }
                 // FLASH
                 if (liveFlash.isNotEmpty()) item {
-                    val left = ((liveFlash.first().second.lng("endAt") ?: 0L) - now).coerceAtLeast(0) / 1000
                     Column(Modifier.padding(top = 18.dp)) {
                         Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 11.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                             Text("ดีลลับ ลดแรง", fontSize = 15.5.sp, fontWeight = FontWeight.SemiBold, color = N.Red500)
-                            Text("%02d:%02d:%02d".format(left / 3600, left % 3600 / 60, left % 60), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = N.Red500,
-                                modifier = Modifier.clip(RoundedCornerShape(10.dp)).background(N.Red100).padding(horizontal = 9.dp, vertical = 4.dp))
+                            FlashCountdown(liveFlash.first().second.lng("endAt") ?: 0L)
                         }
                         LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(11.dp)) {
                             items(liveFlash) { (_, f) ->
@@ -568,4 +565,13 @@ private fun AdImage(src: String, modifier: Modifier = Modifier) {
         }
         bmp?.let { Image(it, null, contentScale = ContentScale.Crop, modifier = modifier) }
     } else AsyncImage(src, null, contentScale = ContentScale.Crop, modifier = modifier)
+}
+
+@Composable
+private fun FlashCountdown(endAt: Long) {
+    var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(Unit) { while (true) { delay(1000); now = System.currentTimeMillis() } }
+    val left = (endAt - now).coerceAtLeast(0) / 1000
+    Text("%02d:%02d:%02d".format(left / 3600, left % 3600 / 60, left % 60), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = N.Red500,
+        modifier = Modifier.clip(RoundedCornerShape(10.dp)).background(N.Red100).padding(horizontal = 9.dp, vertical = 4.dp))
 }
