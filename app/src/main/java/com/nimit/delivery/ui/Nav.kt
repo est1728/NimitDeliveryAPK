@@ -45,6 +45,8 @@ fun NimitNav() {
         if (ok) "shops" else "login"
     }
 
+    UpdatePrompt()
+
     NavHost(
         nav, startDestination = startRoute,
         enterTransition = { slideInHorizontally(tween(260, easing = FastOutSlowInEasing)) { it } },

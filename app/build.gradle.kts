@@ -12,8 +12,8 @@ android {
         applicationId = "com.nimit.delivery"
         minSdk = 24
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = (System.getenv("GITHUB_RUN_NUMBER") ?: "1").toInt()
+        versionName = "build " + (System.getenv("GITHUB_RUN_NUMBER") ?: "local")
         setProperty("archivesBaseName", "NimitDelivery")
     }
     signingConfigs {

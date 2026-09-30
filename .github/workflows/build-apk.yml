@@ -27,3 +27,10 @@ jobs:
         with:
           name: NimitDelivery-release-apk
           path: app/build/outputs/apk/release/*.apk
+      - name: Publish release
+        if: hashFiles('app/build/outputs/apk/release/*.apk') != ''
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+        run: |
+          cp app/build/outputs/apk/release/*.apk NimitDelivery-build-${{ github.run_number }}.apk
+          gh release create "build-${{ github.run_number }}" NimitDelivery-build-${{ github.run_number }}.apk --repo est1728/NimitDelivery-releases --title "Build ${{ github.run_number }}" --notes "auto build" --latest
