@@ -136,7 +136,7 @@ fun ShopsScreen(session: Session, onOpenShop: (String, String) -> Unit, onNaviga
     val open = remember(shops, filters, favs) {
         var out = shops.toList()
         if ("fav" in filters) out = out.filter { it.id in favs }
-        if ("open" in filters) out = out.filter { it.effectiveOpen() }
+        if ("open" in filters) out = out.filter { it.openNow() }
         out = when {
             "rating" in filters -> out.sortedByDescending { it.rating }
             "near" in filters -> out.sortedBy { it.dist ?: 999.0 }
@@ -144,9 +144,9 @@ fun ShopsScreen(session: Session, onOpenShop: (String, String) -> Unit, onNaviga
         }
         out
     }
-    val openList = open.filter { it.effectiveOpen() }
-    val closedList = open.filter { !it.effectiveOpen() }
-    val popular = remember(shops) { shops.filter { it.d["isOpen"] == true }.sortedByDescending { it.score }.take(5) }
+    val openList = open.filter { it.openNow() }
+    val closedList = open.filter { !it.openNow() }
+    val popular = remember(shops) { shops.filter { it.openNow() }.sortedByDescending { it.score }.take(5) }
     val liveFlash = flash.filter { (it.second.lng("endAt") ?: 0L) > now }
 
     Box(Modifier.fillMaxSize().background(N.Bg)) {
