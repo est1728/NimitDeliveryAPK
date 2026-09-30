@@ -215,9 +215,10 @@ private fun SectionBox(err: Boolean, sub: Boolean, content: @Composable ColumnSc
     )
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun TitleRow(title: String, required: Boolean?, hint: String?, small: Boolean) {
-    Row(Modifier.fillMaxWidth().padding(bottom = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    FlowRow(Modifier.fillMaxWidth().padding(bottom = 10.dp), verticalArrangement = Arrangement.spacedBy(4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), itemVerticalAlignment = Alignment.CenterVertically) {
         Text(title, fontSize = if (small) 13.sp else 15.sp, fontWeight = FontWeight.ExtraBold, color = C.Text)
         if (required != null) Badge(required)
         if (hint != null) Text(hint, fontSize = if (small) 11.sp else 12.sp, color = C.Subtext)

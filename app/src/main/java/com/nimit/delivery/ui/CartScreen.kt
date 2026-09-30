@@ -116,11 +116,11 @@ fun CartScreen(session: Session, onBack: () -> Unit, onShop: (String) -> Unit, o
     Column(Modifier.fillMaxSize().background(BG)) {
         // หัว
         Row(Modifier.fillMaxWidth().background(Brush.linearGradient(listOf(PRIMARY, PRIMARY_DARK))).statusBarsPadding().padding(horizontal = 16.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(42.dp).clip(RoundedCornerShape(14.dp)).background(Color.White.copy(alpha = 0.18f)).clickable { onBack() }, contentAlignment = Alignment.Center) {
-                PathIcon("M19 12H5M12 5l-7 7 7 7", Color.White, 22.dp, stroke = true)
+            Box(Modifier.size(38.dp).clip(RoundedCornerShape(12.dp)).background(Color.White.copy(alpha = 0.18f)).clickable { onBack() }, contentAlignment = Alignment.Center) {
+                PathIcon("M19 12H5M12 5l-7 7 7 7", Color.White, 20.dp, stroke = true)
             }
-            Spacer(Modifier.width(14.dp))
-            Text("รายการรถเข็น", fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, color = Color.White)
+            Spacer(Modifier.width(12.dp))
+            Text("รายการรถเข็น", fontSize = 17.sp, fontWeight = FontWeight.ExtraBold, color = Color.White)
         }
         // แท็บ
         Row(Modifier.fillMaxWidth().background(Color.White)) {
@@ -131,21 +131,21 @@ fun CartScreen(session: Session, onBack: () -> Unit, onShop: (String) -> Unit, o
         Box(Modifier.weight(1f).fillMaxWidth()) {
             if (tab == "food") {
                 if (shopIds.isEmpty()) Empty("ตะกร้าว่างเปล่า", "เลือกร้าน", onShops)
-                else LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                else LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     items(shopIds, key = { it }) { shopId ->
                         val grp = cart.getJSONObject(shopId); val arr = grp.getJSONArray("items")
                         val on = shopId in effSel
-                        Column(Modifier.fillMaxWidth().alpha(if (on) 1f else 0.55f).shadow(2.dp, RoundedCornerShape(20.dp)).clip(RoundedCornerShape(20.dp)).background(Color.White)) {
-                            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Box(Modifier.size(30.dp).clip(RoundedCornerShape(9.dp)).background(if (on) PRIMARY else Color.White).border(2.dp, if (on) PRIMARY else Color(0xFFCBD5E1), RoundedCornerShape(9.dp))
+                        Column(Modifier.fillMaxWidth().alpha(if (on) 1f else 0.55f).shadow(2.dp, RoundedCornerShape(16.dp)).clip(RoundedCornerShape(16.dp)).background(Color.White)) {
+                            Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Box(Modifier.size(20.dp).clip(RoundedCornerShape(6.dp)).background(if (on) PRIMARY else Color.White).border(2.dp, if (on) PRIMARY else Color(0xFFCBD5E1), RoundedCornerShape(6.dp))
                                     .clickable { selected = if (on) effSel - shopId else effSel + shopId }, contentAlignment = Alignment.Center) {
-                                    if (on) PathIcon("M20 6L9 17l-5-5", Color.White, 18.dp, stroke = true)
+                                    if (on) PathIcon("M20 6L9 17l-5-5", Color.White, 12.dp, stroke = true)
                                 }
-                                Spacer(Modifier.width(14.dp))
+                                Spacer(Modifier.width(10.dp))
                                 Row(Modifier.clickable { session.selectedShopId = shopId; session.selectedShopName = grp.optString("shopName"); onShop(shopId) }, verticalAlignment = Alignment.CenterVertically) {
-                                    Text(grp.optString("shopName"), fontSize = 17.sp, fontWeight = FontWeight.ExtraBold, color = C.Text)
-                                    Spacer(Modifier.width(6.dp))
-                                    PathIcon(P.CHEVRON, C.Subtext, 18.dp)
+                                    Text(grp.optString("shopName"), fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, color = C.Text)
+                                    Spacer(Modifier.width(4.dp))
+                                    PathIcon(P.CHEVRON, C.Subtext, 16.dp)
                                 }
                             }
                             Box(Modifier.fillMaxWidth().height(1.dp).background(Color(0xFFF0F2F5)))
@@ -153,29 +153,29 @@ fun CartScreen(session: Session, onBack: () -> Unit, onShop: (String) -> Unit, o
                                 val item = arr.getJSONObject(idx)
                                 val opts = item.optJSONArray("options")
                                 val names = buildList { if (opts != null) for (i in 0 until opts.length()) opts.getJSONObject(i).optString("name").takeIf { it.isNotEmpty() }?.let { add(it) } }
-                                Row(Modifier.fillMaxWidth().padding(16.dp)) {
-                                    Box(Modifier.size(80.dp).clip(RoundedCornerShape(14.dp)).background(BG), contentAlignment = Alignment.Center) {
+                                Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp)) {
+                                    Box(Modifier.size(80.dp).clip(RoundedCornerShape(12.dp)).background(BG), contentAlignment = Alignment.Center) {
                                         val img = item.optString("imgUrl")
                                         if (img.isNotEmpty()) AsyncImage(img, null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
-                                        else PathIcon(P.RESTAURANT, Color(0xFFCBD5E1), 32.dp)
+                                        else PathIcon(P.RESTAURANT, Color(0xFFCBD5E1), 30.dp)
                                     }
-                                    Spacer(Modifier.width(14.dp))
+                                    Spacer(Modifier.width(12.dp))
                                     Column(Modifier.weight(1f)) {
-                                        Text(item.optString("name"), fontSize = 17.sp, fontWeight = FontWeight.ExtraBold, color = C.Text)
+                                        Text(item.optString("name"), fontSize = 14.sp, fontWeight = FontWeight.Bold, color = C.Text, modifier = Modifier.padding(bottom = 4.dp))
                                         if (names.isNotEmpty()) Row(
-                                            Modifier.padding(top = 6.dp).fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Color(0xFFFFF1F2)).border(1.5.dp, Color(0xFFFECACA), RoundedCornerShape(12.dp)).padding(horizontal = 12.dp, vertical = 8.dp),
+                                            Modifier.padding(bottom = 8.dp).fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(Color(0xFFFFF5F5)).border(1.dp, Color(0xFFFECACA), RoundedCornerShape(8.dp)).padding(horizontal = 10.dp, vertical = 6.dp),
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
-                                            PathIcon("M20 6L9 17l-5-5", RED, 16.dp, stroke = true)
-                                            Spacer(Modifier.width(8.dp))
-                                            Text(names.joinToString(", "), fontSize = 13.sp, fontWeight = FontWeight.Bold, color = RED, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                            PathIcon("M20 6L9 17l-5-5", RED, 12.dp, stroke = true)
+                                            Spacer(Modifier.width(4.dp))
+                                            Text(names.joinToString(", "), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = RED, maxLines = 2, overflow = TextOverflow.Ellipsis)
                                         }
-                                        Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                                            Text("฿${fmtNum(item.optDouble("price"))}", fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = PRIMARY)
+                                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                            Text("฿${fmtNum(item.optDouble("price"))}", fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, color = PRIMARY)
                                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                                Box(Modifier.size(width = 40.dp, height = 40.dp).clip(RoundedCornerShape(12.dp)).background(Color(0xFFFEE2E2)).clickable { changeQty(shopId, idx, -1) }, contentAlignment = Alignment.Center) { Text("−", fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = RED) }
-                                                Text("${item.optInt("qty")}", fontSize = 16.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.defaultMinSize(minWidth = 32.dp).border(1.5.dp, Color(0xFFE2E8F0), RoundedCornerShape(8.dp)).padding(horizontal = 8.dp, vertical = 6.dp), textAlign = TextAlign.Center)
-                                                Box(Modifier.size(width = 40.dp, height = 40.dp).clip(RoundedCornerShape(12.dp)).background(PRIMARY).clickable { changeQty(shopId, idx, 1) }, contentAlignment = Alignment.Center) { Text("+", fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = Color.White) }
+                                                Box(Modifier.size(30.dp).clip(RoundedCornerShape(8.dp)).background(Color(0xFFFEE2E2)).clickable { changeQty(shopId, idx, -1) }, contentAlignment = Alignment.Center) { Text("−", fontSize = 16.sp, fontWeight = FontWeight.ExtraBold, color = RED) }
+                                                Text("${item.optInt("qty")}", fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.defaultMinSize(minWidth = 22.dp).border(1.5.dp, Color(0xFFE2E8F0), RoundedCornerShape(6.dp)).padding(horizontal = 4.dp, vertical = 2.dp), textAlign = TextAlign.Center)
+                                                Box(Modifier.size(30.dp).clip(RoundedCornerShape(8.dp)).background(PRIMARY).clickable { changeQty(shopId, idx, 1) }, contentAlignment = Alignment.Center) { Text("+", fontSize = 16.sp, fontWeight = FontWeight.ExtraBold, color = Color.White) }
                                             }
                                         }
                                     }
@@ -194,16 +194,16 @@ fun CartScreen(session: Session, onBack: () -> Unit, onShop: (String) -> Unit, o
                         val done = st == "done"
                         val names = asMapList(o["items"]).joinToString(", ") { it.str("name") }
                         val date = (o["createdAt"] as? Timestamp)?.toDate()?.let { SimpleDateFormat("d MMM yyyy", Locale("th", "TH")).format(it) }.orEmpty()
-                        Column(Modifier.fillMaxWidth().shadow(2.dp, RoundedCornerShape(16.dp)).clip(RoundedCornerShape(16.dp)).background(Color.White).clickable { onTrack(id) }.padding(16.dp)) {
+                        Column(Modifier.fillMaxWidth().shadow(2.dp, RoundedCornerShape(14.dp)).clip(RoundedCornerShape(14.dp)).background(Color.White).clickable { onTrack(id) }.padding(14.dp)) {
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                                 Text("#${o.str("orderId")}", fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, color = C.Text)
                                 val c = when { done -> Color(0xFF16A34A); st == "rejected" || st == "cancelled" -> RED; else -> PRIMARY }
                                 Text(STATUS[st] ?: st, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = c, modifier = Modifier.clip(RoundedCornerShape(20.dp)).background(c.copy(alpha = 0.12f)).padding(horizontal = 10.dp, vertical = 4.dp))
                             }
-                            Text(o.str("shopName"), fontSize = 15.sp, fontWeight = FontWeight.Bold, color = C.Text, modifier = Modifier.padding(top = 6.dp))
-                            Text(names, fontSize = 13.sp, color = C.Subtext, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
+                            Text(o.str("shopName"), fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = C.Text, modifier = Modifier.padding(top = 6.dp))
+                            Text(names, fontSize = 12.sp, color = C.Subtext, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
                             Row(Modifier.fillMaxWidth().padding(top = 10.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                                Text("฿${fmtNum(o.dbl("grandTotal") ?: 0.0)} · $date", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = PRIMARY)
+                                Text("฿${fmtNum(o.dbl("grandTotal") ?: 0.0)} · $date", fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, color = C.Text)
                                 if (done) Text("สั่งซ้ำ", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.clip(RoundedCornerShape(10.dp)).background(PRIMARY).clickable { reorder(id) }.padding(horizontal = 14.dp, vertical = 7.dp))
                             }
                         }
@@ -213,28 +213,28 @@ fun CartScreen(session: Session, onBack: () -> Unit, onShop: (String) -> Unit, o
         }
 
         // แถบล่าง
-        if (tab == "food" && shopIds.isNotEmpty()) Column(Modifier.fillMaxWidth().background(Color.White).navigationBarsPadding().padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 14.dp)) {
-            Row(Modifier.fillMaxWidth().padding(bottom = 12.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Text("ยอดรวม", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = C.Subtext)
-                Text("฿${fmtNum(selTotal)}", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = C.Text)
+        if (tab == "food" && shopIds.isNotEmpty()) Column(Modifier.fillMaxWidth().background(Color.White).navigationBarsPadding().padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 14.dp)) {
+            Row(Modifier.fillMaxWidth().padding(bottom = 10.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Text("ยอดรวม", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = C.Subtext)
+                Text("฿${fmtNum(selTotal)}", fontSize = 17.sp, fontWeight = FontWeight.ExtraBold, color = C.Text)
             }
             val enabled = effSel.isNotEmpty()
             Box(
-                Modifier.fillMaxWidth().height(56.dp).then(if (enabled) Modifier.shadow(12.dp, RoundedCornerShape(18.dp), ambientColor = PRIMARY.copy(alpha = 0.4f), spotColor = PRIMARY.copy(alpha = 0.4f)) else Modifier)
-                    .clip(RoundedCornerShape(18.dp)).background(if (enabled) Brush.linearGradient(listOf(PRIMARY, PRIMARY_DARK)) else Brush.linearGradient(listOf(Color(0xFFC5CFE8), Color(0xFFC5CFE8))))
+                Modifier.fillMaxWidth().height(50.dp).then(if (enabled) Modifier.shadow(12.dp, RoundedCornerShape(14.dp), ambientColor = PRIMARY.copy(alpha = 0.4f), spotColor = PRIMARY.copy(alpha = 0.4f)) else Modifier)
+                    .clip(RoundedCornerShape(14.dp)).background(if (enabled) Brush.linearGradient(listOf(PRIMARY, PRIMARY_DARK)) else Brush.linearGradient(listOf(Color(0xFFC5CFE8), Color(0xFFC5CFE8))))
                     .clickable(enabled = enabled) { goCheckout() }, contentAlignment = Alignment.Center
-            ) { Text("สั่งซื้อที่เลือก (${effSel.size} ร้าน)", fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = Color.White) }
+            ) { Text("สั่งซื้อที่เลือก (${effSel.size} ร้าน)", fontSize = 16.sp, fontWeight = FontWeight.ExtraBold, color = Color.White) }
         }
     }
 }
 
 @Composable private fun TabItem(m: Modifier, label: String, badge: Int?, active: Boolean, onClick: () -> Unit) {
     Column(m.clickable { onClick() }, horizontalAlignment = Alignment.CenterHorizontally) {
-        Row(Modifier.padding(vertical = 18.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(label, fontSize = 17.sp, fontWeight = FontWeight.ExtraBold, color = if (active) PRIMARY else C.Subtext)
-            if (badge != null) Text("$badge", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color.White, textAlign = TextAlign.Center, modifier = Modifier.clip(CircleShape).background(PRIMARY).defaultMinSize(minWidth = 26.dp, minHeight = 26.dp).padding(horizontal = 6.dp, vertical = 3.dp))
+        Row(Modifier.padding(vertical = 13.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(label, fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, color = if (active) PRIMARY else C.Subtext)
+            if (badge != null) Text("$badge", fontSize = 11.sp, fontWeight = FontWeight.ExtraBold, color = Color.White, textAlign = TextAlign.Center, modifier = Modifier.clip(CircleShape).background(PRIMARY).defaultMinSize(minWidth = 18.dp, minHeight = 18.dp).padding(horizontal = 5.dp, vertical = 1.dp))
         }
-        Box(Modifier.fillMaxWidth().height(3.dp).background(if (active) PRIMARY else Color.Transparent))
+        Box(Modifier.fillMaxWidth().height(2.dp).background(if (active) PRIMARY else Color.Transparent))
     }
 }
 

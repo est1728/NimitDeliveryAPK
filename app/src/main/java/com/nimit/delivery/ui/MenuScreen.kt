@@ -25,6 +25,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -252,21 +253,21 @@ fun MenuScreen(session: Session, shopIdArg: String, onBack: () -> Unit, onCart: 
             containerColor = Color.White, dragHandle = null, shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
         ) {
             var note by remember(st) { mutableStateOf("") }
-            Column(Modifier.fillMaxWidth().fillMaxHeight(0.94f)) {
-                Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
+            Column(Modifier.fillMaxWidth().heightIn(max = (LocalConfiguration.current.screenHeightDp * 0.94f).dp)) {
+                Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())) {
                     Box(Modifier.fillMaxWidth().height(200.dp).background(BG), contentAlignment = Alignment.Center) {
                         val img = st.m.str("imgUrl")
                         if (img.isNotEmpty()) AsyncImage(img, null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
                         else PathIcon(P.RESTAURANT, Color(0xFFCBD5E1), 56.dp)
                     }
-                    Column(Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
-                        Text(st.m.str("name"), fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, color = C.Text)
-                        Text("฿${pricing.calcPrice(num(st.m["price"]) ?: 0.0, st.menuGp)}", fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = PRIMARY, modifier = Modifier.padding(top = 2.dp))
+                    Column(Modifier.padding(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 4.dp)) {
+                        Text(st.m.str("name"), fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = C.Text)
+                        Text("฿${pricing.calcPrice(num(st.m["price"]) ?: 0.0, st.menuGp)}", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = PRIMARY, modifier = Modifier.padding(top = 4.dp))
                     }
-                    Column(Modifier.padding(horizontal = 16.dp)) {
+                    Column(Modifier.padding(horizontal = 20.dp, vertical = 12.dp)) {
                         PopupBody(st, pricing)
-                        Text("คำแนะนำเพิ่มเติม", fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, color = C.Text, modifier = Modifier.padding(bottom = 6.dp))
-                        NimitInput(note, { note = it }, "เช่น ไม่ใส่ผัก ไม่เผ็ด", height = 80.dp, singleLine = false, modifier = Modifier.padding(bottom = 12.dp))
+                        Text("คำแนะนำเพิ่มเติม", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = C.Text, modifier = Modifier.padding(top = 4.dp, bottom = 6.dp))
+                        NimitInput(note, { note = it }, "เช่น ไม่ใส่ผัก, หวานน้อย", height = 100.dp, singleLine = false, fontSize = 14, modifier = Modifier.padding(bottom = 4.dp))
                     }
                 }
                 HorizontalDividerLine()
@@ -278,9 +279,10 @@ fun MenuScreen(session: Session, shopIdArg: String, onBack: () -> Unit, onCart: 
                         Box(Modifier.size(34.dp).clip(CircleShape).background(PRIMARY).clickable { st.qty += 1 }, contentAlignment = Alignment.Center) { Text("+", fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = Color.White) }
                     }
                 }
-                Row(Modifier.fillMaxWidth().navigationBarsPadding().padding(start = 20.dp, end = 20.dp, bottom = 14.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Box(Modifier.weight(1f).height(50.dp).clip(RoundedCornerShape(14.dp)).background(Color(0xFFF1F5F9)).clickable { popup = null }, contentAlignment = Alignment.Center) { Text("ยกเลิก", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = C.Subtext) }
-                    Box(Modifier.weight(2f).height(50.dp).clip(RoundedCornerShape(14.dp)).background(Brush.linearGradient(listOf(PRIMARY, PRIMARY_DARK))).clickable {
+                HorizontalDividerLine()
+                Row(Modifier.fillMaxWidth().navigationBarsPadding().padding(start = 20.dp, end = 20.dp, top = 14.dp, bottom = 14.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Box(Modifier.weight(1f).height(52.dp).clip(RoundedCornerShape(14.dp)).background(Color.White).border(2.dp, Color(0xFFE2E8F0), RoundedCornerShape(14.dp)).clickable { popup = null }, contentAlignment = Alignment.Center) { Text("ยกเลิก", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = C.Text) }
+                    Box(Modifier.weight(2f).height(52.dp).shadow(8.dp, RoundedCornerShape(14.dp), ambientColor = PRIMARY.copy(alpha = 0.3f), spotColor = PRIMARY.copy(alpha = 0.3f)).clip(RoundedCornerShape(14.dp)).background(Brush.linearGradient(listOf(PRIMARY, PRIMARY_DARK))).clickable {
                         val phone = try { JSONObject(session.customerData ?: "{}").optString("phone") } catch (_: Exception) { "" }.ifEmpty { session.customerPhone.orEmpty() }
                         if (phone.isEmpty()) {
                             Toast.makeText(ctx, "กรุณาเข้าสู่ระบบก่อนสั่งซื้อครับ", Toast.LENGTH_SHORT).show()
