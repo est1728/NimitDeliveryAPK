@@ -6,6 +6,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -41,7 +45,13 @@ fun NimitNav() {
         if (ok) "shops" else "login"
     }
 
-    NavHost(nav, startDestination = startRoute) {
+    NavHost(
+        nav, startDestination = startRoute,
+        enterTransition = { slideInHorizontally(tween(260, easing = FastOutSlowInEasing)) { it } },
+        exitTransition = { slideOutHorizontally(tween(260, easing = FastOutSlowInEasing)) { -it / 4 } },
+        popEnterTransition = { slideInHorizontally(tween(260, easing = FastOutSlowInEasing)) { -it / 4 } },
+        popExitTransition = { slideOutHorizontally(tween(260, easing = FastOutSlowInEasing)) { it } }
+    ) {
         composable("login") {
             LoginScreen(
                 session,
