@@ -25,6 +25,7 @@ class Session(ctx: Context) {
     var cart: String? get() = get("cart"); set(v) = set("cart", v)
     var favoriteShops: String? get() = get("favoriteShops"); set(v) = set("favoriteShops", v)
     var notifLastRead: String? get() = get("notifLastRead"); set(v) = set("notifLastRead", v)
+    var chatOrderId: String? get() = get("chatOrderId"); set(v) = set("chatOrderId", v)
     var selectedShopId: String? get() = get("selectedShopId"); set(v) = set("selectedShopId", v)
     var selectedShopName: String? get() = get("selectedShopName"); set(v) = set("selectedShopName", v)
 

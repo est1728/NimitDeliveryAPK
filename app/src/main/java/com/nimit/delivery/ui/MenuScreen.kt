@@ -98,6 +98,16 @@ fun MenuScreen(session: Session, shopIdArg: String, onBack: () -> Unit, onCart: 
         onDispose { reg?.remove() }
     }
 
+    // เปิดป๊อบอัพเมนูทันทีเมื่อมาจากหน้าหมวดหมู่ (เหมือน ?openItem= ของเว็บ)
+    LaunchedEffect(menus) {
+        val pf = ctx.getSharedPreferences("nimit", android.content.Context.MODE_PRIVATE)
+        val want = pf.getString("openItem", null)
+        if (want != null && menus.isNotEmpty()) {
+            pf.edit().remove("openItem").apply()
+            menus.firstOrNull { it.first == want }?.let { (mid, mm) -> popup = PopupState(mid, mm) }
+        }
+    }
+
     val open = remember(shop, tick) { shop?.let { computeShopOpenNow(it) } ?: true }
     val shopCats = remember(shop) { asMapList(shop?.get("categories")).map { it.str("name") } }
     val cats = remember(menus, shopCats) { listOf("ทั้งหมด") + if (shopCats.isNotEmpty()) shopCats else menus.map { it.second.str("category") }.filter { it.isNotEmpty() }.distinct() }

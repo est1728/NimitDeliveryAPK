@@ -162,6 +162,7 @@ fun CartScreen(session: Session, onBack: () -> Unit, onShop: (String) -> Unit, o
                                     Spacer(Modifier.width(12.dp))
                                     Column(Modifier.weight(1f)) {
                                         Text(item.optString("name"), fontSize = 14.sp, fontWeight = FontWeight.Bold, color = C.Text, modifier = Modifier.padding(bottom = 4.dp))
+                                        if (item.optString("fromCategoryName").isNotEmpty()) Text("หมวด: ${item.optString("fromCategoryName")}", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = PRIMARY, modifier = Modifier.padding(bottom = 6.dp).clip(RoundedCornerShape(8.dp)).background(Color(0xFFE8F0FE)).padding(horizontal = 8.dp, vertical = 2.dp))
                                         if (names.isNotEmpty()) Row(
                                             Modifier.padding(bottom = 8.dp).fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(Color(0xFFFFF5F5)).border(1.dp, Color(0xFFFECACA), RoundedCornerShape(8.dp)).padding(horizontal = 10.dp, vertical = 6.dp),
                                             verticalAlignment = Alignment.CenterVertically
