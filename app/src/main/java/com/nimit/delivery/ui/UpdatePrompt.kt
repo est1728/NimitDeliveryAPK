@@ -93,7 +93,7 @@ private fun installApk(ctx: Context, f: File) {
 }
 
 @Composable
-fun UpdatePrompt() {
+fun UpdatePrompt(appName: String = "Nimit Delivery", tagPrefix: String? = null) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     var remote by remember { mutableStateOf<RemoteBuild?>(null) }
@@ -104,7 +104,7 @@ fun UpdatePrompt() {
 
     LaunchedEffect(Unit) {
         val cur = try { PackageInfoCompat.getLongVersionCode(ctx.packageManager.getPackageInfo(ctx.packageName, 0)).toInt() } catch (_: Exception) { Int.MAX_VALUE }
-        val r = fetchLatest()
+        val r: RemoteBuild? = if (tagPrefix == null) fetchLatest() else fetchByPrefix(tagPrefix)?.let { RemoteBuild(it.first, it.second) }
         if (r != null && r.code > cur) remote = r
     }
 
@@ -115,7 +115,7 @@ fun UpdatePrompt() {
             title = { Text("มีเวอร์ชันใหม่") },
             text = {
                 Column {
-                    Text("Nimit Delivery เวอร์ชัน ${r.code} พร้อมให้อัปเดตแล้ว")
+                    Text("$appName เวอร์ชัน ${r.code} พร้อมให้อัปเดตแล้ว")
                     if (needPerm) Text("\nกรุณาอนุญาต \"ติดตั้งแอปจากแหล่งที่ไม่รู้จัก\" ให้แอปนี้ แล้วกลับมากดอัปเดตอีกครั้ง")
                     if (failed) Text("\nดาวน์โหลดไม่สำเร็จ ลองใหม่อีกครั้ง")
                     val p = progress

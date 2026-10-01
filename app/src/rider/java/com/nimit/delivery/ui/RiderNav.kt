@@ -16,6 +16,7 @@ fun RiderNav() {
     val nav = rememberNavController()
     val start: String = remember { if (session.riderId.isNullOrEmpty()) "login" else "home" }
 
+    UpdatePrompt(appName = "Nimit Rider", tagPrefix = "rider-build-")
     NavHost(nav, startDestination = start) {
         composable("login") {
             RiderLoginScreen(onLoggedIn = { r: RiderInfo ->
