@@ -21,7 +21,7 @@ import org.json.JSONObject
 
 // หน้าที่ยังไม่ได้แปลง (ทยอยเปลี่ยนเป็นหน้าจริงทีละหน้า)
 private val pendingRoutes = listOf(
-    "address", "chat", "review", "reorder",
+    "address", "chat", "review",
     "reviews/{type}/{id}"
 )
 
@@ -75,7 +75,7 @@ fun NimitNav() {
             ShopsScreen(
                 session,
                 onOpenShop = { id, name -> session.selectedShopId = id; session.selectedShopName = name; nav.navigate("menu/$id") },
-                onNavigate = { nav.navigate(it) },
+                onNavigate = { if (it == "__reload") nav.navigate("shops") { popUpTo("shops") { inclusive = true } } else nav.navigate(it) },
                 onLogout = { session.logout(); nav.navigate("login") { popUpTo(0) } }
             )
         }
@@ -87,6 +87,7 @@ fun NimitNav() {
         searchRoute(session, nav)
         couponRoute(session, nav)
         notificationsRoute(session, nav)
+        reorderRoute(session, nav)
         pendingRoutes.forEach { r ->
             composable(r) { Pending(r) { nav.popBackStack() } }
         }

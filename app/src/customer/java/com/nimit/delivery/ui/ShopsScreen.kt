@@ -108,6 +108,9 @@ fun ShopsScreen(session: Session, onOpenShop: (String, String) -> Unit, onNaviga
     var refreshing by remember { mutableStateOf(false) }
     var zoneOut by remember { mutableStateOf(false) }
     var sidebar by remember { mutableStateOf(false) }
+    var showAccounts by remember { mutableStateOf(false) }
+    NotifPermissionOnce()
+    if (showAccounts) AccountDialog(session, onDismiss = { showAccounts = false }, onAdd = { showAccounts = false; session.loginReturnRoute = "shops"; onNavigate("login") }, onSwitched = { showAccounts = false; onNavigate("__reload") }, onLogout = { showAccounts = false; onLogout() })
     var filters by remember { mutableStateOf(setOf("rec")) }
     var favs by remember {
         mutableStateOf(try { JSONArray(session.favoriteShops ?: "[]").let { a -> (0 until a.length()).map { a.getString(it) }.toSet() } } catch (_: Exception) { emptySet<String>() })
@@ -220,7 +223,7 @@ fun ShopsScreen(session: Session, onOpenShop: (String, String) -> Unit, onNaviga
                                     Row(
                                         Modifier.padding(top = 5.dp).clip(RoundedCornerShape(12.dp))
                                             .background(Color.White.copy(alpha = 0.14f))
-                                            .clickable { onNavigate(if (phone.isNotEmpty()) "address" else "login") }
+                                            .clickable { showAccounts = true }
                                             .padding(horizontal = 9.dp, vertical = 3.dp),
                                         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)
                                     ) {
@@ -434,7 +437,9 @@ fun ShopsScreen(session: Session, onOpenShop: (String, String) -> Unit, onNaviga
                     }
                     Text("✕", color = Color.White, fontSize = 18.sp, modifier = Modifier.clickable { sidebar = false }.padding(8.dp))
                 }
-                SbItem("ที่อยู่จัดส่ง", customer.optString("address").ifEmpty { "เพิ่มที่อยู่จัดส่ง" }) { sidebar = false; onNavigate("address") }
+                SidebarNotifRow()
+                SbItem("แก้ไขที่อยู่", customer.optString("address").ifEmpty { "เพิ่มที่อยู่จัดส่ง" }) { sidebar = false; onNavigate("address") }
+                SbItem("สลับบัญชี", loginText) { sidebar = false; showAccounts = true }
                 SbItem("ออกจากระบบ", "เข้าสู่ระบบด้วยเบอร์อื่น") { sidebar = false; onLogout() }
             }
         }

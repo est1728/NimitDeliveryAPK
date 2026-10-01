@@ -137,33 +137,36 @@ fun CheckoutScreen(session: Session, onBack: () -> Unit, onAddress: () -> Unit, 
 
     LaunchedEffect(Unit) {
         val db = Firebase.firestore
-        try {
-            db.collection("settings").document("pricing").get().await().data?.let { d ->
+        coroutineScope {
+            // โหลดทุกอย่างขนานกัน (เดิมโหลดทีละอย่างต่อกัน จึงช้า)
+            val settingsJob = async { try { db.collection("settings").document("pricing").get().await().data } catch (_: Exception) { null } }
+            val shopJobs = shopIds.map { id -> async { try { db.collection("shops").document(id).get().await().data?.let { id to it } } catch (_: Exception) { null } } }
+            val couponJob = async {
+                if (phone.isEmpty()) emptyList<Doc>() else try {
+                    val claims = db.collection("claimedCoupons").whereEqualTo("phone", phone).whereEqualTo("used", false).get().await().documents
+                    val now = System.currentTimeMillis()
+                    claims.map { cl -> async {
+                        val cid = cl.getString("couponId") ?: return@async null
+                        val cs = try { db.collection("coupons").document(cid).get().await() } catch (_: Exception) { null }
+                        val d = cs?.data
+                        if (d != null && cs.exists() && (num(d["endAt"]) ?: 0.0) > now) d + mapOf("claimId" to cl.id, "id" to cs.id) else null
+                    } }.awaitAll().filterNotNull()
+                } catch (_: Exception) { emptyList<Doc>() }
+            }
+            settingsJob.await()?.let { d ->
                 walletPct = num(d["walletPercent"]) ?: 30.0; riderPct = num(d["riderPercent"]) ?: 70.0
                 baseFee = num(d["deliveryFee"]) ?: 9.0; tiers = asMapList(d["deliveryTiers"])
             }
-        } catch (_: Exception) {}
-        val m = mutableMapOf<String, Doc>()
-        shopIds.forEach { id -> try { db.collection("shops").document(id).get().await().data?.let { m[id] = it } } catch (_: Exception) {} }
-        meta = m
-        if (phone.isNotEmpty()) {
-            val c = mutableMapOf<String, Doc>()
-            shopIds.forEach { id ->
-                if (m[id]?.get("loyaltyEnabled") == true) c[id] = try { db.collection("loyaltyCards").document(id + "_" + phone).get().await().data ?: mapOf("points" to 0) } catch (_: Exception) { mapOf("points" to 0) }
+            val m = shopJobs.awaitAll().filterNotNull().toMap()
+            meta = m
+            loading = false   // ข้อมูลหลักพร้อม ปุ่มสั่งซื้อใช้ได้ทันที ส่วนบัตรสะสมแต้ม/คูปองโหลดต่อเบื้องหลัง
+            launch {
+                if (phone.isNotEmpty()) cards = m.filter { it.value["loyaltyEnabled"] == true }.keys.map { id ->
+                    async { id to (try { db.collection("loyaltyCards").document(id + "_" + phone).get().await().data ?: mapOf<String, Any?>("points" to 0) } catch (_: Exception) { mapOf<String, Any?>("points" to 0) }) }
+                }.awaitAll().toMap()
             }
-            cards = c
-            try {
-                val claims = db.collection("claimedCoupons").whereEqualTo("phone", phone).whereEqualTo("used", false).get().await().documents
-                val now = System.currentTimeMillis()
-                coupons = claims.mapNotNull { cl ->
-                    val cid = cl.getString("couponId") ?: return@mapNotNull null
-                    val cs = try { db.collection("coupons").document(cid).get().await() } catch (_: Exception) { null }
-                    val d = cs?.data
-                    if (d != null && cs.exists() && (num(d["endAt"]) ?: 0.0) > now) d + mapOf("claimId" to cl.id, "id" to cs.id) else null
-                }
-            } catch (_: Exception) {}
+            coupons = couponJob.await()
         }
-        loading = false
     }
 
     val addr = addresses.getOrNull(selIdx) ?: addresses.firstOrNull()
@@ -319,7 +322,7 @@ fun CheckoutScreen(session: Session, onBack: () -> Unit, onAddress: () -> Unit, 
                             val opts = it.optJSONArray("options")
                             val optText = buildList { if (opts != null) for (k in 0 until opts.length()) opts.getJSONObject(k).optString("name").takeIf { s -> s.isNotEmpty() }?.let { s -> add(s) } }.joinToString(", ")
                             Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Box(Modifier.size(52.dp).clip(RoundedCornerShape(10.dp)).background(GRAY)) { if (it.optString("imgUrl").isNotEmpty()) AsyncImage(it.optString("imgUrl"), null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()) }
+                                Box(Modifier.size(52.dp).clip(RoundedCornerShape(10.dp)).background(GRAY), contentAlignment = Alignment.Center) { PathIcon(P.RESTAURANT, Color(0xFFCBD5E1), 24.dp) }   // ใช้ไอคอนแทนรูป ลดการโหลด/แรมของหน้านี้
                                 Spacer(Modifier.width(12.dp))
                                 Column(Modifier.weight(1f)) {
                                     Text(it.optString("name"), fontSize = 14.sp, fontWeight = FontWeight.Bold, color = C.Text)
