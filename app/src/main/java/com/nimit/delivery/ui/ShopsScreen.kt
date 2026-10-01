@@ -133,6 +133,28 @@ fun ShopsScreen(session: Session, onOpenShop: (String, String) -> Unit, onNaviga
 
     fun pick(id: String, name: String) { onOpenShop(id, name) }
     fun openUrl(u: String) { try { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(u))) } catch (_: Exception) {} }
+    // ลิงก์ที่ชี้หน้าของเราเอง (เว็บเดิม) ให้เข้าหน้า native; เปิดเบราว์เซอร์เฉพาะเว็บภายนอกจริงๆ
+    fun openLink(u: String, id: String) {
+        val low = u.lowercase()
+        val internal = !low.startsWith("http") || "nimitdelivery" in low || "vercel.app" in low
+        if (!internal) { openUrl(u); return }
+        val file = low.substringBefore("?").substringBefore("#").substringAfterLast("/")
+        val qid = try { Uri.parse(u).getQueryParameter("id") } catch (_: Exception) { null } ?: ""
+        val cid = id.ifEmpty { qid }
+        val route = when (file) {
+            "category.html" -> if (cid.isNotEmpty()) "category/$cid" else null
+            "coupon.html" -> "coupon"
+            "cart.html" -> "cart"
+            "checkout.html" -> "checkout"
+            "search.html" -> "search"
+            "address.html" -> "address"
+            "notifications.html" -> "notifications"
+            "reorder.html" -> "reorder"
+            else -> null
+        }
+        if (route != null) onNavigate(route)
+        else if (file.isNotEmpty() && file != "shops.html") Toast.makeText(ctx, "หน้านี้กำลังแปลงเป็นแอป", Toast.LENGTH_SHORT).show()
+    }
     fun toggleFav(id: String) {
         favs = if (id in favs) favs - id else favs + id
         session.favoriteShops = JSONArray(favs.toList()).toString()
@@ -197,7 +219,7 @@ fun ShopsScreen(session: Session, onOpenShop: (String, String) -> Unit, onNaviga
                     }
                 }
                 // ADS
-                if (ads.isNotEmpty()) item { AdsPager(ads, ::pick, ::openUrl) }
+                if (ads.isNotEmpty()) item { AdsPager(ads, ::pick) { openLink(it, "") } }
                 // ACTIVE ORDER
                 order?.let { (id, o) ->
                     item {
@@ -301,8 +323,7 @@ fun ShopsScreen(session: Session, onOpenShop: (String, String) -> Unit, onNaviga
                     LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(15.dp)) {
                         items(cats) { (id, b) ->
                             Column(Modifier.width(60.dp).clickable {
-                                val dp = b.str("destPage").ifEmpty { "category.html" }
-                                if (dp.startsWith("http", true)) openUrl(dp) else onNavigate("category/$id")
+                                openLink(b.str("destPage").ifEmpty { "category.html" }, id)
                             }, horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                 Box(Modifier.size(52.dp).clip(CircleShape).background(Color.White).border(1.dp, N.Line, CircleShape), contentAlignment = Alignment.Center) {
                                     if (b.str("iconType") == "custom" && b.str("iconUrl").isNotEmpty()) AsyncImage(b.str("iconUrl"), null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
