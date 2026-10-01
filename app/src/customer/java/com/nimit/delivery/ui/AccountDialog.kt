@@ -23,6 +23,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -172,12 +173,14 @@ fun SidebarNotifRow() {
         if (canAsk) launcher.launch(Manifest.permission.POST_NOTIFICATIONS) else ctx.openNotifSettings()
     }
     Column(Modifier.fillMaxWidth()) {
-        Row(Modifier.padding(horizontal = 18.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.padding(horizontal = 18.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text("การแจ้งเตือน", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = N.Ink900)
-                Text(if (!granted) "ปิดอยู่ในเครื่อง · เปิดสวิตช์เพื่อตั้งค่า" else if (pref) "เปิดอยู่ · แจ้งสถานะออเดอร์และข่าวสาร" else "ปิดอยู่", fontSize = 11.5.sp, color = N.Ink500)
+                Text("การแจ้งเตือน", fontSize = 13.5.sp, fontWeight = FontWeight.Bold, color = N.Ink900)
+                Text(if (!granted) "ปิดอยู่ในเครื่อง · เปิดสวิตช์เพื่อตั้งค่า" else if (pref) "เปิดอยู่ · แจ้งสถานะออเดอร์และข่าวสาร" else "ปิดอยู่", fontSize = 11.sp, color = N.Ink500)
             }
-            Switch(checked = on, onCheckedChange = { toggle(it) }, colors = SwitchDefaults.colors(checkedTrackColor = N.B600, checkedThumbColor = Color.White))
+            Box(Modifier.width(42.dp).height(26.dp), contentAlignment = Alignment.Center) {
+                Switch(checked = on, onCheckedChange = { toggle(it) }, modifier = Modifier.requiredSize(52.dp, 32.dp).scale(0.8f), colors = SwitchDefaults.colors(checkedTrackColor = N.B600, checkedThumbColor = Color.White))
+            }
         }
         HorizontalDivider(color = N.Line)
     }

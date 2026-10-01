@@ -522,12 +522,12 @@ private fun cartCount(session: Session): Int = try {
 
 @Composable private fun SbItem(title: String, sub: String, onClick: () -> Unit) {
     Column(Modifier.fillMaxWidth().clickable { onClick() }) {
-        Row(Modifier.padding(horizontal = 18.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.padding(horizontal = 18.dp, vertical = 11.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text(title, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = N.Ink900)
-                Text(sub, fontSize = 11.5.sp, color = N.Ink500, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(title, fontSize = 13.5.sp, fontWeight = FontWeight.Bold, color = N.Ink900)
+                Text(sub, fontSize = 11.sp, color = N.Ink500, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
-            PathIcon(P.CHEVRON, N.Ink300, 20.dp)
+            PathIcon(P.CHEVRON, N.Ink300, 18.dp)
         }
         HorizontalDivider(color = N.Line)
     }
