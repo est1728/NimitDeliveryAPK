@@ -9,12 +9,18 @@ android {
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.nimit.delivery"
         minSdk = 24
         targetSdk = 34
         versionCode = (System.getenv("GITHUB_RUN_NUMBER") ?: "1").toInt()
         versionName = "build " + (System.getenv("GITHUB_RUN_NUMBER") ?: "local")
         setProperty("archivesBaseName", "NimitDelivery")
+    }
+    flavorDimensions += "app"
+    productFlavors {
+        create("customer") { dimension = "app"; applicationId = "com.nimit.delivery" }
+        create("admin") { dimension = "app"; applicationId = "com.nimit.delivery.admin" }
+        create("shop") { dimension = "app"; applicationId = "com.nimit.delivery.shop" }
+        create("rider") { dimension = "app"; applicationId = "com.nimit.delivery.rider" }
     }
     signingConfigs {
         create("nimit") {

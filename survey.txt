@@ -1,0 +1,563 @@
+== tree
+.github/workflows/build-apk.yml
+.gitignore
+app/build.gradle.kts
+app/nimit.keystore
+app/proguard-rules.pro
+app/src/main/AndroidManifest.xml
+app/src/main/java/com/nimit/delivery/MainActivity.kt
+app/src/main/java/com/nimit/delivery/NimitApp.kt
+app/src/main/java/com/nimit/delivery/data/Config.kt
+app/src/main/java/com/nimit/delivery/data/LoginFlow.kt
+app/src/main/java/com/nimit/delivery/data/MenuLogic.kt
+app/src/main/java/com/nimit/delivery/data/Session.kt
+app/src/main/java/com/nimit/delivery/data/ShopsRepo.kt
+app/src/main/java/com/nimit/delivery/ui/CartRoute.kt
+app/src/main/java/com/nimit/delivery/ui/CartScreen.kt
+app/src/main/java/com/nimit/delivery/ui/CategoryRoute.kt
+app/src/main/java/com/nimit/delivery/ui/CategoryScreen.kt
+app/src/main/java/com/nimit/delivery/ui/CheckoutRoute.kt
+app/src/main/java/com/nimit/delivery/ui/CheckoutScreen.kt
+app/src/main/java/com/nimit/delivery/ui/Common.kt
+app/src/main/java/com/nimit/delivery/ui/CouponRoute.kt
+app/src/main/java/com/nimit/delivery/ui/CouponScreen.kt
+app/src/main/java/com/nimit/delivery/ui/Icons.kt
+app/src/main/java/com/nimit/delivery/ui/ItemSheet.kt
+app/src/main/java/com/nimit/delivery/ui/LoginScreen.kt
+app/src/main/java/com/nimit/delivery/ui/MenuPopup.kt
+app/src/main/java/com/nimit/delivery/ui/MenuRoute.kt
+app/src/main/java/com/nimit/delivery/ui/MenuScreen.kt
+app/src/main/java/com/nimit/delivery/ui/Nav.kt
+app/src/main/java/com/nimit/delivery/ui/NotificationsRoute.kt
+app/src/main/java/com/nimit/delivery/ui/NotificationsScreen.kt
+app/src/main/java/com/nimit/delivery/ui/OtpScreen.kt
+app/src/main/java/com/nimit/delivery/ui/RegisterScreen.kt
+app/src/main/java/com/nimit/delivery/ui/SearchRoute.kt
+app/src/main/java/com/nimit/delivery/ui/SearchScreen.kt
+app/src/main/java/com/nimit/delivery/ui/ShopsScreen.kt
+app/src/main/java/com/nimit/delivery/ui/Theme.kt
+app/src/main/java/com/nimit/delivery/ui/TrackRoute.kt
+app/src/main/java/com/nimit/delivery/ui/TrackScreen.kt
+app/src/main/java/com/nimit/delivery/ui/UpdatePrompt.kt
+app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml
+app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml
+app/src/main/res/values/colors.xml
+app/src/main/res/values/strings.xml
+app/src/main/res/values/themes.xml
+app/src/main/res/xml/file_paths.xml
+build.gradle.kts
+gradle.properties
+settings.gradle.kts
+== build.gradle.kts
+plugins {
+    id("com.android.application") version "8.5.2" apply false
+    id("org.jetbrains.kotlin.android") version "2.0.20" apply false
+    id("org.jetbrains.kotlin.plugin.compose") version "2.0.20" apply false
+}
+== settings.gradle.kts
+pluginManagement {
+    repositories { google(); mavenCentral(); gradlePluginPortal() }
+}
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories { google(); mavenCentral() }
+}
+rootProject.name = "NimitDelivery"
+include(":app")
+== app/build.gradle.kts
+plugins {
+    id("com.android.application")
+    id("org.jetbrains.kotlin.android")
+    id("org.jetbrains.kotlin.plugin.compose")
+}
+
+android {
+    namespace = "com.nimit.delivery"
+    compileSdk = 34
+
+    defaultConfig {
+        applicationId = "com.nimit.delivery"
+        minSdk = 24
+        targetSdk = 34
+        versionCode = (System.getenv("GITHUB_RUN_NUMBER") ?: "1").toInt()
+        versionName = "build " + (System.getenv("GITHUB_RUN_NUMBER") ?: "local")
+        setProperty("archivesBaseName", "NimitDelivery")
+    }
+    signingConfigs {
+        create("nimit") {
+            storeFile = file("nimit.keystore")
+            storePassword = "***"
+            keyAlias = "nimit"
+            keyPassword = "***"
+        }
+    }
+    buildTypes {
+        debug { signingConfig = signingConfigs.getByName("nimit") }
+        release {
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            signingConfig = signingConfigs.getByName("nimit")
+        }
+    }
+    lint { checkReleaseBuilds = false }
+    buildFeatures { compose = true }
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+    kotlinOptions { jvmTarget = "17" }
+}
+
+dependencies {
+    implementation("androidx.core:core-ktx:1.13.1")
+    implementation("androidx.core:core-splashscreen:1.0.1")
+    implementation("androidx.activity:activity-compose:1.9.2")
+    implementation(platform("androidx.compose:compose-bom:2024.09.03"))
+    implementation("androidx.compose.ui:ui")
+    implementation("androidx.compose.ui:ui-graphics")
+    implementation("androidx.compose.material3:material3")
+    implementation("androidx.navigation:navigation-compose:2.8.2")
+    implementation(platform("com.google.firebase:firebase-bom:33.4.0"))
+    implementation("com.google.firebase:firebase-firestore")
+    implementation("com.google.firebase:firebase-auth")
+    implementation("org.osmdroid:osmdroid-android:6.1.18")
+    implementation("io.coil-kt:coil-compose:2.7.0")
+    implementation("com.google.android.gms:play-services-location:21.3.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.8.1")
+}
+== .github/workflows/build-apk.yml
+name: Build APK
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+      - run: gradle assembleDebug --no-daemon
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NimitDelivery-apk
+          path: app/build/outputs/apk/debug/*.apk
+      - run: gradle assembleRelease --no-daemon
+        continue-on-error: true
+      - uses: actions/upload-artifact@v4
+        if: hashFiles('app/build/outputs/apk/release/*.apk') != ''
+        with:
+          name: NimitDelivery-release-apk
+          path: app/build/outputs/apk/release/*.apk
+      - name: Publish release
+        if: hashFiles('app/build/outputs/apk/release/*.apk') != ''
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+        run: |
+          cp app/build/outputs/apk/release/*.apk NimitDelivery-build-${{ github.run_number }}.apk
+          gh release create "build-${{ github.run_number }}" NimitDelivery-build-${{ github.run_number }}.apk --repo est1728/NimitDelivery-releases --title "Build ${{ github.run_number }}" --notes "auto build" --latest
+== app/src/main/AndroidManifest.xml
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+
+    <application
+        android:name=".NimitApp"
+        android:allowBackup="false"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:label="@string/app_name"
+        android:theme="@style/Theme.Nimit.Starting">
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+    </application>
+</manifest>
+== app/src/main/java/com/nimit/delivery/NimitApp.kt
+package com.nimit.delivery
+
+import android.app.Application
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.os.Build
+import coil.ImageLoader
+import coil.ImageLoaderFactory
+import coil.disk.DiskCache
+import coil.memory.MemoryCache
+import com.google.firebase.FirebaseApp
+import com.google.firebase.FirebaseOptions
+
+class NimitApp : Application(), ImageLoaderFactory {
+    override fun newImageLoader(): ImageLoader = ImageLoader.Builder(this)
+        .memoryCache { MemoryCache.Builder(this).maxSizePercent(0.25).build() }
+        .diskCache { DiskCache.Builder().directory(cacheDir.resolve("img")).maxSizeBytes(200L * 1024 * 1024).build() }
+        .respectCacheHeaders(false)
+        .crossfade(true)
+        .build()
+
+    override fun onCreate() {
+        super.onCreate()
+        // ใช้ Firebase project เดียวกับเว็บ (nimit-delivery) -> ข้อมูลชุดเดียวกัน
+        if (FirebaseApp.getApps(this).isEmpty()) {
+            FirebaseApp.initializeApp(
+                this,
+                FirebaseOptions.Builder()
+                    .setApiKey("AIzaSyCnBUk0ZKFcwMK0NyYkheux1xPt9bLYhr4")
+                    .setApplicationId("1:233476256130:web:62ba8f64ad0bf2f92c9f9b")
+                    .setProjectId("nimit-delivery")
+                    .setStorageBucket("nimit-delivery.firebasestorage.app")
+                    .setGcmSenderId("233476256130")
+                    .build()
+            )
+        }
+        if (Build.VERSION.SDK_INT >= 26) {
+            val nm = getSystemService(NotificationManager::class.java)
+            nm.createNotificationChannel(
+                NotificationChannel("orders", "สถานะออเดอร์", NotificationManager.IMPORTANCE_HIGH)
+            )
+        }
+    }
+}
+== app/src/main/java/com/nimit/delivery/data/Session.kt
+package com.nimit.delivery.data
+
+import android.content.Context
+import org.json.JSONObject
+
+/** แทน localStorage/sessionStorage ของเว็บ (เก็บเฉพาะแคชฝั่งเครื่อง ข้อมูลหลักอยู่ที่ Firestore) */
+class Session(ctx: Context) {
+    private val p = ctx.getSharedPreferences("nimit", Context.MODE_PRIVATE)
+
+    private fun get(k: String): String? = p.getString(k, null)
+    private fun set(k: String, v: String?) {
+        p.edit().apply { if (v == null) remove(k) else putString(k, v) }.apply()
+    }
+
+    var customerPhone: String? get() = get("customerPhone"); set(v) = set("customerPhone", v)
+    var customerData: String? get() = get("customerData"); set(v) = set("customerData", v)
+    var addresses: String? get() = get("addresses"); set(v) = set("addresses", v)
+    var defaultAddress: String? get() = get("defaultAddress"); set(v) = set("defaultAddress", v)
+    var savedAccounts: String? get() = get("savedAccounts"); set(v) = set("savedAccounts", v)
+    var loginReturnRoute: String? get() = get("loginReturnRoute"); set(v) = set("loginReturnRoute", v)
+    var newCustomer: String? get() = get("newCustomer"); set(v) = set("newCustomer", v)
+    var verifiedPhone: String? get() = get("verifiedPhone"); set(v) = set("verifiedPhone", v)
+    var addrBack: String? get() = get("addrBack"); set(v) = set("addrBack", v)
+
+    var cart: String? get() = get("cart"); set(v) = set("cart", v)
+    var favoriteShops: String? get() = get("favoriteShops"); set(v) = set("favoriteShops", v)
+    var notifLastRead: String? get() = get("notifLastRead"); set(v) = set("notifLastRead", v)
+    var chatOrderId: String? get() = get("chatOrderId"); set(v) = set("chatOrderId", v)
+    var selectedShopId: String? get() = get("selectedShopId"); set(v) = set("selectedShopId", v)
+    var selectedShopName: String? get() = get("selectedShopName"); set(v) = set("selectedShopName", v)
+
+    fun logout() { customerData = null; customerPhone = null }
+
+    fun clearCustomerCache() {
+        customerData = null; addresses = null; defaultAddress = null
+    }
+
+    fun clearSaved() {
+        customerPhone = null; customerData = null; addresses = null
+    }
+}
+
+fun Map<String, Any?>.toJson(): JSONObject {
+    val o = JSONObject()
+    for ((k, v) in this) {
+        when (v) {
+            null -> {}
+            is String, is Number, is Boolean -> o.put(k, v)
+            else -> o.put(k, v.toString())
+        }
+    }
+    return o
+}
+== app/src/main/java/com/nimit/delivery/ui/Nav.kt
+package com.nimit.delivery.ui
+
+import androidx.compose.foundation.layout.*
+import androidx.compose.material3.Button
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.rememberNavController
+import com.nimit.delivery.data.Session
+import org.json.JSONObject
+
+// หน้าที่ยังไม่ได้แปลง (ทยอยเปลี่ยนเป็นหน้าจริงทีละหน้า)
+private val pendingRoutes = listOf(
+    "address", "chat", "review", "reorder",
+    "reviews/{type}/{id}"
+)
+
+@Composable
+fun NimitNav() {
+    val ctx = LocalContext.current
+    val session = remember { Session(ctx) }
+    val nav = rememberNavController()
+
+    fun toShops() {
+        val r = session.loginReturnRoute
+        session.loginReturnRoute = null
+        nav.navigate(r ?: "shops") { popUpTo("login") { inclusive = true } }
+    }
+
+    // เคยล็อกอิน+ลงทะเบียนแล้ว -> เข้าหน้าช้อปเลย
+    val startRoute = remember {
+        val ok = try {
+            !session.customerPhone.isNullOrEmpty() && JSONObject(session.customerData ?: "{}").optBoolean("registered", false)
+        } catch (_: Exception) { false }
+        if (ok) "shops" else "login"
+    }
+
+    UpdatePrompt()
+
+    NavHost(
+        nav, startDestination = startRoute,
+        enterTransition = { slideInHorizontally(tween(260, easing = FastOutSlowInEasing)) { it } },
+        exitTransition = { slideOutHorizontally(tween(260, easing = FastOutSlowInEasing)) { -it / 4 } },
+        popEnterTransition = { slideInHorizontally(tween(260, easing = FastOutSlowInEasing)) { -it / 4 } },
+        popExitTransition = { slideOutHorizontally(tween(260, easing = FastOutSlowInEasing)) { it } }
+    ) {
+        composable("login") {
+            LoginScreen(
+                session,
+                onNeedOtp = { nav.navigate("otp") },
+                onLoggedIn = { toShops() },
+                onNewCustomer = { nav.navigate("register") }
+            )
+        }
+        composable("otp") {
+            OtpScreen(session, onBack = { nav.popBackStack() }) { registered ->
+                if (registered) toShops()
+                else nav.navigate("register") { popUpTo("otp") { inclusive = true } }
+            }
+        }
+        composable("register") {
+            RegisterScreen(session, onBack = { nav.popBackStack() }, onDone = { toShops() })
+        }
+        composable("shops") {
+            ShopsScreen(
+                session,
+                onOpenShop = { id, name -> session.selectedShopId = id; session.selectedShopName = name; nav.navigate("menu/$id") },
+                onNavigate = { nav.navigate(it) },
+                onLogout = { session.logout(); nav.navigate("login") { popUpTo(0) } }
+            )
+        }
+        menuRoute(session, nav)
+        cartRoute(session, nav)
+        checkoutRoute(session, nav)
+        trackRoute(session, nav)
+        categoryRoute(session, nav)
+        searchRoute(session, nav)
+        couponRoute(session, nav)
+        notificationsRoute(session, nav)
+        pendingRoutes.forEach { r ->
+            composable(r) { Pending(r) { nav.popBackStack() } }
+        }
+    }
+}
+
+@Composable
+private fun Pending(name: String, onBack: () -> Unit) {
+    Column(
+        Modifier.fillMaxSize().padding(24.dp),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text("หน้า $name กำลังแปลงเป็น Native")
+        Spacer(Modifier.height(16.dp))
+        Button(onClick = onBack) { Text("กลับ") }
+    }
+}
+== app/src/main/java/com/nimit/delivery/ui/UpdatePrompt.kt
+package com.nimit.delivery.ui
+
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import android.os.Build
+import android.provider.Settings
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
+import androidx.core.content.FileProvider
+import androidx.core.content.pm.PackageInfoCompat
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import org.json.JSONObject
+import java.io.File
+import java.net.HttpURLConnection
+import java.net.URL
+
+private const val RELEASES_REPO = "est1728/NimitDelivery-releases"
+
+private class RemoteBuild(val code: Int, val url: String)
+
+private suspend fun fetchLatest(): RemoteBuild? = withContext(Dispatchers.IO) {
+    try {
+        val c = URL("https://api.github.com/repos/$RELEASES_REPO/releases/latest").openConnection() as HttpURLConnection
+        c.connectTimeout = 8000
+        c.readTimeout = 8000
+        c.setRequestProperty("Accept", "application/vnd.github+json")
+        if (c.responseCode != 200) return@withContext null
+        val j = JSONObject(c.inputStream.bufferedReader().readText())
+        val code = j.getString("tag_name").removePrefix("build-").toIntOrNull() ?: return@withContext null
+        val assets = j.getJSONArray("assets")
+        var url = ""
+        for (i in 0 until assets.length()) {
+            val a = assets.getJSONObject(i)
+            if (a.getString("name").endsWith(".apk")) { url = a.getString("browser_download_url"); break }
+        }
+        if (url.isEmpty()) null else RemoteBuild(code, url)
+    } catch (_: Exception) { null }
+}
+
+private suspend fun downloadApk(ctx: Context, url: String, onProgress: (Float) -> Unit): File? = withContext(Dispatchers.IO) {
+    try {
+        val dir = File(ctx.cacheDir, "updates").apply { mkdirs() }
+        dir.listFiles()?.forEach { it.delete() }
+        val out = File(dir, "update.apk")
+        val c = URL(url).openConnection() as HttpURLConnection
+        c.connectTimeout = 15000
+        c.readTimeout = 30000
+        val total = c.contentLengthLong
+        c.inputStream.use { input ->
+            out.outputStream().use { o ->
+                val buf = ByteArray(64 * 1024)
+                var done = 0L
+                var last = 0L
+                var n = input.read(buf)
+                while (n >= 0) {
+                    o.write(buf, 0, n)
+                    done += n
+                    if (total > 0 && done - last > 200_000) { last = done; onProgress(done.toFloat() / total) }
+                    n = input.read(buf)
+                }
+            }
+        }
+        onProgress(1f)
+        out
+    } catch (_: Exception) { null }
+}
+
+private fun installApk(ctx: Context, f: File) {
+    val uri = FileProvider.getUriForFile(ctx, ctx.packageName + ".fileprovider", f)
+    ctx.startActivity(
+        Intent(Intent.ACTION_VIEW).setDataAndType(uri, "application/vnd.android.package-archive")
+            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+    )
+}
+
+@Composable
+fun UpdatePrompt() {
+    val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var remote by remember { mutableStateOf<RemoteBuild?>(null) }
+    var dismissed by remember { mutableStateOf(false) }
+    var progress by remember { mutableStateOf<Float?>(null) }
+    var failed by remember { mutableStateOf(false) }
+    var needPerm by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        val cur = try { PackageInfoCompat.getLongVersionCode(ctx.packageManager.getPackageInfo(ctx.packageName, 0)).toInt() } catch (_: Exception) { Int.MAX_VALUE }
+        val r = fetchLatest()
+        if (r != null && r.code > cur) remote = r
+    }
+
+    val r = remote
+    if (r != null && !dismissed) {
+        AlertDialog(
+            onDismissRequest = { if (progress == null) dismissed = true },
+            title = { Text("มีเวอร์ชันใหม่") },
+            text = {
+                Column {
+                    Text("Nimit Delivery เวอร์ชัน ${r.code} พร้อมให้อัปเดตแล้ว")
+                    if (needPerm) Text("\nกรุณาอนุญาต \"ติดตั้งแอปจากแหล่งที่ไม่รู้จัก\" ให้แอปนี้ แล้วกลับมากดอัปเดตอีกครั้ง")
+                    if (failed) Text("\nดาวน์โหลดไม่สำเร็จ ลองใหม่อีกครั้ง")
+                    val p = progress
+                    if (p != null) {
+                        Spacer(Modifier.height(12.dp))
+                        LinearProgressIndicator(progress = { p }, modifier = Modifier.fillMaxWidth())
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(enabled = progress == null, onClick = {
+                    if (Build.VERSION.SDK_INT >= 26 && !ctx.packageManager.canRequestPackageInstalls()) {
+                        needPerm = true
+                        ctx.startActivity(
+                            Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:" + ctx.packageName))
+                                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        )
+                    } else {
+                        needPerm = false
+                        failed = false
+                        progress = 0f
+                        scope.launch {
+                            val f = downloadApk(ctx, r.url) { progress = it }
+                            if (f == null) failed = true else installApk(ctx, f)
+                            progress = null
+                        }
+                    }
+                }) { Text(if (progress == null) "อัปเดต" else "กำลังโหลด…") }
+            },
+            dismissButton = {
+                if (progress == null) TextButton(onClick = { dismissed = true }) { Text("ภายหลัง") }
+            }
+        )
+    }
+}

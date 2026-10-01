@@ -1,0 +1,186 @@
+ermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+    </application>
+</manifest>
+== app/src/main/java/com/nimit/delivery/NimitApp.kt
+package com.nimit.delivery
+
+import android.app.Application
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.os.Build
+import coil.ImageLoader
+import coil.ImageLoaderFactory
+import coil.disk.DiskCache
+import coil.memory.MemoryCache
+import com.google.firebase.FirebaseApp
+import com.google.firebase.FirebaseOptions
+
+class NimitApp : Application(), ImageLoaderFactory {
+    override fun newImageLoader(): ImageLoader = ImageLoader.Builder(this)
+        .memoryCache { MemoryCache.Builder(this).maxSizePercent(0.25).build() }
+        .diskCache { DiskCache.Builder().directory(cacheDir.resolve("img")).maxSizeBytes(200L * 1024 * 1024).build() }
+        .respectCacheHeaders(false)
+        .crossfade(true)
+        .build()
+
+    override fun onCreate() {
+        super.onCreate()
+        // ใช้ Firebase project เดียวกับเว็บ (nimit-delivery) -> ข้อมูลชุดเดียวกัน
+        if (FirebaseApp.getApps(this).isEmpty()) {
+            FirebaseApp.initializeApp(
+                this,
+                FirebaseOptions.Builder()
+                    .setApiKey("AIzaSyCnBUk0ZKFcwMK0NyYkheux1xPt9bLYhr4")
+                    .setApplicationId("1:233476256130:web:62ba8f64ad0bf2f92c9f9b")
+                    .setProjectId("nimit-delivery")
+                    .setStorageBucket("nimit-delivery.firebasestorage.app")
+                    .setGcmSenderId("233476256130")
+                    .build()
+            )
+        }
+        if (Build.VERSION.SDK_INT >= 26) {
+            val nm = getSystemService(NotificationManager::class.java)
+            nm.createNotificationChannel(
+                NotificationChannel("orders", "สถานะออเดอร์", NotificationManager.IMPORTANCE_HIGH)
+            )
+        }
+    }
+}
+== app/src/main/java/com/nimit/delivery/data/Session.kt
+package com.nimit.delivery.data
+
+import android.content.Context
+import org.json.JSONObject
+
+/** แทน localStorage/sessionStorage ของเว็บ (เก็บเฉพาะแคชฝั่งเครื่อง ข้อมูลหลักอยู่ที่ Firestore) */
+class Session(ctx: Context) {
+    private val p = ctx.getSharedPreferences("nimit", Context.MODE_PRIVATE)
+
+    private fun get(k: String): String? = p.getString(k, null)
+    private fun set(k: String, v: String?) {
+        p.edit().apply { if (v == null) remove(k) else putString(k, v) }.apply()
+    }
+
+    var customerPhone: String? get() = get("customerPhone"); set(v) = set("customerPhone", v)
+    var customerData: String? get() = get("customerData"); set(v) = set("customerData", v)
+    var addresses: String? get() = get("addresses"); set(v) = set("addresses", v)
+    var defaultAddress: String? get() = get("defaultAddress"); set(v) = set("defaultAddress", v)
+    var savedAccounts: String? get() = get("savedAccounts"); set(v) = set("savedAccounts", v)
+    var loginReturnRoute: String? get() = get("loginReturnRoute"); set(v) = set("loginReturnRoute", v)
+    var newCustomer: String? get() = get("newCustomer"); set(v) = set("newCustomer", v)
+    var verifiedPhone: String? get() = get("verifiedPhone"); set(v) = set("verifiedPhone", v)
+    var addrBack: String? get() = get("addrBack"); set(v) = set("addrBack", v)
+
+    var cart: String? get() = get("cart"); set(v) = set("cart", v)
+    var favoriteShops: String? get() = get("favoriteShops"); set(v) = set("favoriteShops", v)
+    var notifLastRead: String? get() = get("notifLastRead"); set(v) = set("notifLastRead", v)
+    var chatOrderId: String? get() = get("chatOrderId"); set(v) = set("chatOrderId", v)
+    var selectedShopId: String? get() = get("selectedShopId"); set(v) = set("selectedShopId", v)
+    var selectedShopName: String? get() = get("selectedShopName"); set(v) = set("selectedShopName", v)
+
+    fun logout() { customerData = null; customerPhone = null }
+
+    fun clearCustomerCache() {
+        customerData = null; addresses = null; defaultAddress = null
+    }
+
+    fun clearSaved() {
+        customerPhone = null; customerData = null; addresses = null
+    }
+}
+
+fun Map<String, Any?>.toJson(): JSONObject {
+    val o = JSONObject()
+    for ((k, v) in this) {
+        when (v) {
+            null -> {}
+            is String, is Number, is Boolean -> o.put(k, v)
+            else -> o.put(k, v.toString())
+        }
+    }
+    return o
+}
+== app/src/main/java/com/nimit/delivery/ui/Nav.kt
+package com.nimit.delivery.ui
+
+import androidx.compose.foundation.layout.*
+import androidx.compose.material3.Button
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.rememberNavController
+import com.nimit.delivery.data.Session
+import org.json.JSONObject
+
+// หน้าที่ยังไม่ได้แปลง (ทยอยเปลี่ยนเป็นหน้าจริงทีละหน้า)
+private val pendingRoutes = listOf(
+    "address", "chat", "review", "reorder",
+    "reviews/{type}/{id}"
+)
+
+@Composable
+fun NimitNav() {
+    val ctx = LocalContext.current
+    val session = remember { Session(ctx) }
+    val nav = rememberNavController()
+
+    fun toShops() {
+        val r = session.loginReturnRoute
+        session.loginReturnRoute = null
+        nav.navigate(r ?: "shops") { popUpTo("login") { inclusive = true } }
+    }
+
+    // เคยล็อกอิน+ลงทะเบียนแล้ว -> เข้าหน้าช้อปเลย
+    val startRoute = remember {
+        val ok = try {
+            !session.customerPhone.isNullOrEmpty() && JSONObject(session.customerData ?: "{}").optBoolean("registered", false)
+        } catch (_: Exception) { false }
+        if (ok) "shops" else "login"
+    }
+
+    UpdatePrompt()
+
+    NavHost(
+        nav, startDestination = startRoute,
+        enterTransition = { slideInHorizontally(tween(260, easing = FastOutSlowInEasing)) { it } },
+        exitTransition = { slideOutHorizontally(tween(260, easing = FastOutSlowInEasing)) { -it / 4 } },
+        popEnterTransition = { slideInHorizontally(tween(260, easing = FastOutSlowInEasing)) { -it / 4 } },
+        popExitTransition = { slideOutHorizontally(tween(260, easing = FastOutSlowInEasing)) { it } }
+    ) {
+        composable("login") {
+            LoginScreen(
+                session,
+                onNeedOtp = { nav.navigate("otp") },
+                onLoggedIn = { toShops() },
+                onNewCustomer = { nav.navigate("register") }
+            )
+        }
+        composable("otp") {
+            OtpScreen(session, onBack = { nav.popBackStack() }) { registered ->
+                if (registered) toShops()
+                else nav.navigate("register") { popUpTo("otp") { inclusive = true } }
+            }
+        }
+        composable("register") {
+            RegisterScreen(session, onBack = { nav.popBackStack() }, onDone = { toShops() })
+        }
+        composable("shops") {
+            ShopsScreen(
+                session,
+                onOpenShop = { id, name -> session.selectedShopId = id; session.selectedShopName = name; nav.navigate("menu/$id") },
+                onNavigate = { nav.navigate(it) },
+                onLogout = { session.logout(); nav.navigate("l

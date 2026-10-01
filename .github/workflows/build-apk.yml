@@ -15,22 +15,22 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.9"
-      - run: gradle assembleDebug --no-daemon
+      - run: gradle assembleCustomerDebug --no-daemon
       - uses: actions/upload-artifact@v4
         with:
           name: NimitDelivery-apk
-          path: app/build/outputs/apk/debug/*.apk
-      - run: gradle assembleRelease --no-daemon
+          path: app/build/outputs/apk/customer/debug/*.apk
+      - run: gradle assembleCustomerRelease --no-daemon
         continue-on-error: true
       - uses: actions/upload-artifact@v4
-        if: hashFiles('app/build/outputs/apk/release/*.apk') != ''
+        if: hashFiles('app/build/outputs/apk/customer/release/*.apk') != ''
         with:
           name: NimitDelivery-release-apk
-          path: app/build/outputs/apk/release/*.apk
+          path: app/build/outputs/apk/customer/release/*.apk
       - name: Publish release
-        if: hashFiles('app/build/outputs/apk/release/*.apk') != ''
+        if: hashFiles('app/build/outputs/apk/customer/release/*.apk') != ''
         env:
           GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
         run: |
-          cp app/build/outputs/apk/release/*.apk NimitDelivery-build-${{ github.run_number }}.apk
+          cp app/build/outputs/apk/customer/release/*.apk NimitDelivery-build-${{ github.run_number }}.apk
           gh release create "build-${{ github.run_number }}" NimitDelivery-build-${{ github.run_number }}.apk --repo est1728/NimitDelivery-releases --title "Build ${{ github.run_number }}" --notes "auto build" --latest

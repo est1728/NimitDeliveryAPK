@@ -1,0 +1,196 @@
+== tree
+.github/workflows/build-apk.yml
+.gitignore
+app/build.gradle.kts
+app/nimit.keystore
+app/proguard-rules.pro
+app/src/main/AndroidManifest.xml
+app/src/main/java/com/nimit/delivery/MainActivity.kt
+app/src/main/java/com/nimit/delivery/NimitApp.kt
+app/src/main/java/com/nimit/delivery/data/Config.kt
+app/src/main/java/com/nimit/delivery/data/LoginFlow.kt
+app/src/main/java/com/nimit/delivery/data/MenuLogic.kt
+app/src/main/java/com/nimit/delivery/data/Session.kt
+app/src/main/java/com/nimit/delivery/data/ShopsRepo.kt
+app/src/main/java/com/nimit/delivery/ui/CartRoute.kt
+app/src/main/java/com/nimit/delivery/ui/CartScreen.kt
+app/src/main/java/com/nimit/delivery/ui/CategoryRoute.kt
+app/src/main/java/com/nimit/delivery/ui/CategoryScreen.kt
+app/src/main/java/com/nimit/delivery/ui/CheckoutRoute.kt
+app/src/main/java/com/nimit/delivery/ui/CheckoutScreen.kt
+app/src/main/java/com/nimit/delivery/ui/Common.kt
+app/src/main/java/com/nimit/delivery/ui/CouponRoute.kt
+app/src/main/java/com/nimit/delivery/ui/CouponScreen.kt
+app/src/main/java/com/nimit/delivery/ui/Icons.kt
+app/src/main/java/com/nimit/delivery/ui/ItemSheet.kt
+app/src/main/java/com/nimit/delivery/ui/LoginScreen.kt
+app/src/main/java/com/nimit/delivery/ui/MenuPopup.kt
+app/src/main/java/com/nimit/delivery/ui/MenuRoute.kt
+app/src/main/java/com/nimit/delivery/ui/MenuScreen.kt
+app/src/main/java/com/nimit/delivery/ui/Nav.kt
+app/src/main/java/com/nimit/delivery/ui/NotificationsRoute.kt
+app/src/main/java/com/nimit/delivery/ui/NotificationsScreen.kt
+app/src/main/java/com/nimit/delivery/ui/OtpScreen.kt
+app/src/main/java/com/nimit/delivery/ui/RegisterScreen.kt
+app/src/main/java/com/nimit/delivery/ui/SearchRoute.kt
+app/src/main/java/com/nimit/delivery/ui/SearchScreen.kt
+app/src/main/java/com/nimit/delivery/ui/ShopsScreen.kt
+app/src/main/java/com/nimit/delivery/ui/Theme.kt
+app/src/main/java/com/nimit/delivery/ui/TrackRoute.kt
+app/src/main/java/com/nimit/delivery/ui/TrackScreen.kt
+app/src/main/java/com/nimit/delivery/ui/UpdatePrompt.kt
+app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml
+app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml
+app/src/main/res/values/colors.xml
+app/src/main/res/values/strings.xml
+app/src/main/res/values/themes.xml
+app/src/main/res/xml/file_paths.xml
+build.gradle.kts
+gradle.properties
+settings.gradle.kts
+== build.gradle.kts
+plugins {
+    id("com.android.application") version "8.5.2" apply false
+    id("org.jetbrains.kotlin.android") version "2.0.20" apply false
+    id("org.jetbrains.kotlin.plugin.compose") version "2.0.20" apply false
+}
+== settings.gradle.kts
+pluginManagement {
+    repositories { google(); mavenCentral(); gradlePluginPortal() }
+}
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories { google(); mavenCentral() }
+}
+rootProject.name = "NimitDelivery"
+include(":app")
+== app/build.gradle.kts
+plugins {
+    id("com.android.application")
+    id("org.jetbrains.kotlin.android")
+    id("org.jetbrains.kotlin.plugin.compose")
+}
+
+android {
+    namespace = "com.nimit.delivery"
+    compileSdk = 34
+
+    defaultConfig {
+        applicationId = "com.nimit.delivery"
+        minSdk = 24
+        targetSdk = 34
+        versionCode = (System.getenv("GITHUB_RUN_NUMBER") ?: "1").toInt()
+        versionName = "build " + (System.getenv("GITHUB_RUN_NUMBER") ?: "local")
+        setProperty("archivesBaseName", "NimitDelivery")
+    }
+    signingConfigs {
+        create("nimit") {
+            storeFile = file("nimit.keystore")
+            storePassword = "***"
+            keyAlias = "nimit"
+            keyPassword = "***"
+        }
+    }
+    buildTypes {
+        debug { signingConfig = signingConfigs.getByName("nimit") }
+        release {
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            signingConfig = signingConfigs.getByName("nimit")
+        }
+    }
+    lint { checkReleaseBuilds = false }
+    buildFeatures { compose = true }
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+    kotlinOptions { jvmTarget = "17" }
+}
+
+dependencies {
+    implementation("androidx.core:core-ktx:1.13.1")
+    implementation("androidx.core:core-splashscreen:1.0.1")
+    implementation("androidx.activity:activity-compose:1.9.2")
+    implementation(platform("androidx.compose:compose-bom:2024.09.03"))
+    implementation("androidx.compose.ui:ui")
+    implementation("androidx.compose.ui:ui-graphics")
+    implementation("androidx.compose.material3:material3")
+    implementation("androidx.navigation:navigation-compose:2.8.2")
+    implementation(platform("com.google.firebase:firebase-bom:33.4.0"))
+    implementation("com.google.firebase:firebase-firestore")
+    implementation("com.google.firebase:firebase-auth")
+    implementation("org.osmdroid:osmdroid-android:6.1.18")
+    implementation("io.coil-kt:coil-compose:2.7.0")
+    implementation("com.google.android.gms:play-services-location:21.3.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.8.1")
+}
+== .github/workflows/build-apk.yml
+name: Build APK
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+      - run: gradle assembleDebug --no-daemon
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NimitDelivery-apk
+          path: app/build/outputs/apk/debug/*.apk
+      - run: gradle assembleRelease --no-daemon
+        continue-on-error: true
+      - uses: actions/upload-artifact@v4
+        if: hashFiles('app/build/outputs/apk/release/*.apk') != ''
+        with:
+          name: NimitDelivery-release-apk
+          path: app/build/outputs/apk/release/*.apk
+      - name: Publish release
+        if: hashFiles('app/build/outputs/apk/release/*.apk') != ''
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+        run: |
+          cp app/build/outputs/apk/release/*.apk NimitDelivery-build-${{ github.run_number }}.apk
+          gh release create "build-${{ github.run_number }}" NimitDelivery-build-${{ github.run_number }}.apk --repo est1728/NimitDelivery-releases --title "Build ${{ github.run_number }}" --notes "auto build" --latest
+== app/src/main/AndroidManifest.xml
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+
+    <application
+        android:name=".NimitApp"
+        android:allowBackup="false"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:label="@string/app_name"
+        android:theme="@style/Theme.Nimit.Starting">
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriP
