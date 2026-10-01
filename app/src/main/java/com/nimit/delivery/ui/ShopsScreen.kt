@@ -71,6 +71,17 @@ private val FILTERS = listOf(
 private val BADGE_LABEL = mapOf("pop" to "ยอดนิยม", "top" to "คะแนนสูงสุด", "new" to "เปิดใหม่", "fast" to "ส่งไว", "promo" to "โปรโมชัน")
 private val BADGE_COLOR = mapOf("pop" to N.Amber600, "top" to N.B700, "new" to N.Green600, "fast" to Color(0xFF1291A6), "promo" to N.Red500)
 
+private object ShopsCache {
+    var owner: String = ""
+    var shops: List<Shop> = emptyList()
+    var ads: List<Pair<String, Doc>> = emptyList()
+    var cats: List<Pair<String, Doc>> = emptyList()
+    var flash: List<Pair<String, Doc>> = emptyList()
+    var coupons: Int = 0
+    var notif: Int = 0
+    var order: Pair<String, Doc>? = null
+}
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @SuppressLint("MissingPermission")
 @Composable
@@ -78,14 +89,22 @@ fun ShopsScreen(session: Session, onOpenShop: (String, String) -> Unit, onNaviga
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
 
-    var shops by remember { mutableStateOf<List<Shop>>(emptyList()) }
-    var ads by remember { mutableStateOf<List<Pair<String, Doc>>>(emptyList()) }
-    var cats by remember { mutableStateOf<List<Pair<String, Doc>>>(emptyList()) }
-    var flash by remember { mutableStateOf<List<Pair<String, Doc>>>(emptyList()) }
-    var coupons by remember { mutableStateOf(0) }
-    var notif by remember { mutableStateOf(0) }
-    var order by remember { mutableStateOf<Pair<String, Doc>?>(null) }
-    var loading by remember { mutableStateOf(true) }
+    val warm = remember { ShopsCache.owner == session.customerPhone.orEmpty() && ShopsCache.shops.isNotEmpty() }
+    var shops by remember { mutableStateOf<List<Shop>>(if (warm) ShopsCache.shops else emptyList()) }
+    var ads by remember { mutableStateOf<List<Pair<String, Doc>>>(if (warm) ShopsCache.ads else emptyList()) }
+    var cats by remember { mutableStateOf<List<Pair<String, Doc>>>(if (warm) ShopsCache.cats else emptyList()) }
+    var flash by remember { mutableStateOf<List<Pair<String, Doc>>>(if (warm) ShopsCache.flash else emptyList()) }
+    var coupons by remember { mutableStateOf(if (warm) ShopsCache.coupons else 0) }
+    var notif by remember { mutableStateOf(if (warm) ShopsCache.notif else 0) }
+    var order by remember { mutableStateOf<Pair<String, Doc>?>(if (warm) ShopsCache.order else null) }
+    var loading by remember { mutableStateOf(!warm) }
+    androidx.compose.runtime.SideEffect {
+        if (shops.isNotEmpty()) {
+            ShopsCache.owner = session.customerPhone.orEmpty()
+            ShopsCache.shops = shops; ShopsCache.ads = ads; ShopsCache.cats = cats; ShopsCache.flash = flash
+            ShopsCache.coupons = coupons; ShopsCache.notif = notif; ShopsCache.order = order
+        }
+    }
     var refreshing by remember { mutableStateOf(false) }
     var zoneOut by remember { mutableStateOf(false) }
     var sidebar by remember { mutableStateOf(false) }
@@ -211,7 +230,7 @@ fun ShopsScreen(session: Session, onOpenShop: (String, String) -> Unit, onNaviga
                                 }
                             }
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                CircleBtn(P.BELL, notif) { session.notifLastRead = System.currentTimeMillis().toString(); notif = 0; onNavigate("notifications") }
+                                CircleBtn(P.BELL, notif) { notif = 0; onNavigate("notifications") }
                                 CircleBtn(P.MENU, 0) { sidebar = true }
                             }
                         }
@@ -231,20 +250,18 @@ fun ShopsScreen(session: Session, onOpenShop: (String, String) -> Unit, onNaviga
                                 .clickable { onNavigate("track/$id") }.padding(horizontal = 16.dp, vertical = 14.dp)
                         ) {
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                                Text("● #" + (o.str("orderId").ifEmpty { id.takeLast(6).uppercase() }), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    LiveDot()
+                                    Text("#" + (o.str("orderId").ifEmpty { id.takeLast(6).uppercase() }), fontSize = 13.5.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
+                                }
                                 Text("กำลังดำเนินการ", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = Color.White,
                                     modifier = Modifier.clip(RoundedCornerShape(8.dp)).background(Color.White.copy(alpha = 0.18f)).padding(horizontal = 9.dp, vertical = 4.dp))
                             }
                             Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text(o.str("shopName"), fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Color.White, modifier = Modifier.weight(1f))
-                                Text(ShopsRepo.statusLabel[o.str("status")] ?: o.str("status"), fontSize = 12.sp, color = Color.White.copy(alpha = 0.85f))
+                                Text(o.str("shopName"), fontSize = 12.sp, color = Color.White.copy(alpha = 0.85f), modifier = Modifier.weight(1f))
+                                Text(ShopsRepo.statusLabel[o.str("status")] ?: o.str("status"), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
                             }
-                            Row(Modifier.fillMaxWidth().padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                ShopsRepo.activeStatuses.indices.forEach { i ->
-                                    Box(Modifier.weight(1f).height(4.dp).clip(RoundedCornerShape(4.dp)).background(
-                                        when { i < idx -> Color.White; i == idx -> Color.White.copy(alpha = 0.6f); else -> Color.White.copy(alpha = 0.2f) }))
-                                }
-                            }
+                            OrderProgress(idx, ShopsRepo.activeStatuses.size)
                         }
                     }
                 }
@@ -629,5 +646,56 @@ private fun FlashCountdown(endAt: Long) {
         Box(Modifier.size(6.dp).graphicsLayer { alpha = pulse.value }.clip(CircleShape).background(N.Red500))
         Text("%02d:%02d:%02d".format(left / 3600, left % 3600 / 60, left % 60), style = TextStyle(fontFeatureSettings = "tnum"),
             fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
+    }
+}
+
+@Composable
+private fun LiveDot() {
+    val p = rememberInfiniteTransition(label = "live").animateFloat(
+        0f, 1f, infiniteRepeatable(tween(1600, easing = FastOutSlowInEasing)), label = "liveP"
+    )
+    Box(Modifier.size(7.dp), contentAlignment = Alignment.Center) {
+        Box(Modifier.fillMaxSize().clip(CircleShape).background(Color(0xFF4ADE80)))
+        Box(
+            Modifier.requiredSize(15.dp)
+                .graphicsLayer { val k = 0.6f + 1.5f * p.value; scaleX = k; scaleY = k; alpha = 0.8f * (1f - p.value) }
+                .border(1.5.dp, Color(0xFF4ADE80), CircleShape)
+        )
+    }
+}
+
+@Composable
+private fun OrderProgress(idx: Int, n: Int) {
+    val cur = idx.coerceAtLeast(0)
+    var go by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { go = true }
+    val bounce = androidx.compose.animation.core.CubicBezierEasing(0.34f, 1.56f, 0.64f, 1f)
+    val pos = androidx.compose.animation.core.animateFloatAsState(if (go) (cur + 1).toFloat() / n else 0f, tween(900, easing = bounce), label = "riderPos")
+    val bob = rememberInfiniteTransition(label = "ride").animateFloat(
+        0f, 3f, infiniteRepeatable(tween(1400, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "rideBob"
+    )
+    BoxWithConstraints(Modifier.fillMaxWidth().padding(top = 2.dp)) {
+        val riderW = 28.dp
+        Column {
+            Spacer(Modifier.height(22.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                repeat(n) { i ->
+                    val f = androidx.compose.animation.core.animateFloatAsState(if (go && i <= cur) 1f else 0f, tween(900, easing = bounce), label = "seg")
+                    Box(Modifier.weight(1f).height(4.dp).clip(RoundedCornerShape(2.dp)).background(Color.White.copy(alpha = 0.2f))) {
+                        Box(Modifier.fillMaxWidth(f.value.coerceIn(0f, 1f)).fillMaxHeight().background(if (i < cur) Color(0xFFF59E0B) else Color.White))
+                    }
+                }
+            }
+        }
+        // ตัวรถหันขวา วิ่งไปตามสถานะล่าสุด
+        Box(
+            Modifier.offset {
+                val w = maxWidth.toPx()
+                val rw = riderW.toPx()
+                val x = (w * pos.value - rw / 2f).coerceIn(0f, w - rw) + bob.value.dp.toPx()
+                androidx.compose.ui.unit.IntOffset(x.toInt(), 0)
+            }.size(riderW, 24.dp).graphicsLayer { scaleX = -1f },
+            contentAlignment = Alignment.Center
+        ) { Text("\uD83D\uDEF5", fontSize = 20.sp) }
     }
 }
