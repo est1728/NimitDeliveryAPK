@@ -75,12 +75,12 @@ fun CategoryScreen(session: Session, buttonId: String, onBack: () -> Unit, onOpe
             } else {
                 val refs = asMapList(d["itemRefs"])
                 if (refs.isEmpty()) { msg("ยังไม่มีเมนูในหมวดหมู่นี้", "ลองดูหมวดหมู่อื่น หรือกลับมาเช็คใหม่ภายหลัง"); return@LaunchedEffect }
-                val items = coroutineScope {
-                    refs.map { r -> async { try { db.collection("shops").document(r.str("shopId")).collection("menus").document(r.str("menuId")).get().await().let { s -> if (s.exists()) Triple(s.id, s.data ?: emptyMap(), r.str("shopId")) else null } } catch (_: Exception) { null } } }.awaitAll()
+                val items: List<Triple<String, Doc, String>> = coroutineScope {
+                    refs.map { r -> async { try { db.collection("shops").document(r.str("shopId")).collection("menus").document(r.str("menuId")).get().await().let { s -> if (s.exists()) Triple<String, Doc, String>(s.id, s.data ?: emptyMap(), r.str("shopId")) else null } } catch (_: Exception) { null } } }.awaitAll()
                 }.filterNotNull()
                 if (items.isEmpty()) { msg("ยังไม่มีเมนูในหมวดหมู่นี้", "ลองดูหมวดหมู่อื่น หรือกลับมาเช็คใหม่ภายหลัง"); return@LaunchedEffect }
-                val shopDocs = coroutineScope {
-                    items.map { it.third }.distinct().map { sid -> async { try { db.collection("shops").document(sid).get().await().let { s -> sid to (s.data ?: emptyMap()) } } catch (_: Exception) { sid to emptyMap<String, Any?>() } } }.awaitAll()
+                val shopDocs: Map<String, Doc> = coroutineScope {
+                    items.map { it.third }.distinct().map { sid -> async { val sd: Doc = try { db.collection("shops").document(sid).get().await().data ?: emptyMap() } catch (_: Exception) { emptyMap() }; sid to sd } }.awaitAll()
                 }.toMap()
                 // ราคาที่แสดงใช้สูตร GP เดียวกับหน้าเมนู (เว็บเดิมโชว์ราคาดิบ ทำให้ไม่ตรงกับหน้าเมนู)
                 val pr = Pricing.from(try { db.collection("settings").document("pricing").get().await().data } catch (_: Exception) { null })
