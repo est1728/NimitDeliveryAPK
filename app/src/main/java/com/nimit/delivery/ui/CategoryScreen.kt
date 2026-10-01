@@ -68,8 +68,8 @@ fun CategoryScreen(session: Session, buttonId: String, onBack: () -> Unit, onOpe
             if (d.str("mode").ifEmpty { "items" } == "shops") {
                 val ids = (d["shopIds"] as? List<*>)?.map { it.toString() } ?: emptyList()
                 if (ids.isEmpty()) { msg("ยังไม่มีร้านค้าในหมวดหมู่นี้", "ลองดูหมวดหมู่อื่น หรือกลับมาเช็คใหม่ภายหลัง"); return@LaunchedEffect }
-                val shops = coroutineScope {
-                    ids.map { id -> async { try { db.collection("shops").document(id).get().await().let { s -> if (s.exists()) id to (s.data ?: emptyMap()) else null } } catch (_: Exception) { null } } }.awaitAll()
+                val shops: List<Pair<String, Doc>> = coroutineScope {
+                    ids.map { id -> async { try { db.collection("shops").document(id).get().await().let { s -> if (s.exists()) Pair<String, Doc>(id, s.data ?: emptyMap()) else null } } catch (_: Exception) { null } } }.awaitAll()
                 }.filterNotNull()
                 if (shops.isEmpty()) msg("ยังไม่มีร้านค้าในหมวดหมู่นี้", "ลองดูหมวดหมู่อื่น หรือกลับมาเช็คใหม่ภายหลัง") else st = CatState(shops = shops)
             } else {
