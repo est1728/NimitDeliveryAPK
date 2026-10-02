@@ -25,6 +25,7 @@ object LoginFlow {
                     var idx = -1
                     for (i in 0 until arr.length()) if (arr.getJSONObject(i).optString("phone") == p) idx = i
                     if (idx >= 0) arr.put(idx, entry) else arr.put(entry)
+                    while (arr.length() > 3) arr.remove(0)
                     session.savedAccounts = arr.toString()
                 } catch (_: Exception) {}
                 val addr = d["address"]?.toString().orEmpty()

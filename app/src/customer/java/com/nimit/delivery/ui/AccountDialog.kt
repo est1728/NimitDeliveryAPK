@@ -62,7 +62,27 @@ private fun buildAccounts(s: Session): List<Acc> {
 fun AccountDialog(session: Session, onDismiss: () -> Unit, onAdd: () -> Unit, onSwitched: () -> Unit, onLogout: () -> Unit) {
     val scope = rememberCoroutineScope()
     val current = session.customerPhone.orEmpty()
-    val accounts = remember { buildAccounts(session) }
+    val accounts = remember { mutableStateListOf<Acc>().apply { addAll(buildAccounts(session)) } }
+    val ctx = LocalContext.current
+    var confirmDel by remember { mutableStateOf<Acc?>(null) }
+    fun removeAcc(a: Acc) {
+        try {
+            val arr = JSONArray(session.savedAccounts ?: "[]")
+            val out = JSONArray()
+            for (i in 0 until arr.length()) { val o = arr.getJSONObject(i); if (o.optString("phone") != a.phone) out.put(o) }
+            session.savedAccounts = out.toString()
+        } catch (_: Exception) {}
+        accounts.remove(a)
+    }
+    confirmDel?.let { d ->
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { confirmDel = null },
+            title = { Text("ลบบัญชีนี้?") },
+            text = { Text("ลบ ${d.name.ifEmpty { d.phone }} (${d.phone}) ออกจากรายการในเครื่องนี้ ข้อมูลบัญชียังอยู่ในระบบ กลับมาเข้าสู่ระบบด้วยเบอร์นี้ได้ภายหลัง") },
+            confirmButton = { androidx.compose.material3.TextButton(onClick = { removeAcc(d); confirmDel = null }) { Text("ลบ", color = N.Red500) } },
+            dismissButton = { androidx.compose.material3.TextButton(onClick = { confirmDel = null }) { Text("ยกเลิก") } }
+        )
+    }
     var busy by remember { mutableStateOf<String?>(null) }
     val palette = listOf(N.B600, N.Green600, N.Amber600, Color(0xFF8B5CF6), N.Red500)
 
@@ -112,11 +132,12 @@ fun AccountDialog(session: Session, onDismiss: () -> Unit, onAdd: () -> Unit, on
                     }
                     if (busy == a.phone) Text("กำลังสลับ…", fontSize = 11.sp, color = N.B700)
                     else if (isCur) PathIcon("M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z", N.B600, 22.dp)
+else Box(Modifier.clip(CircleShape).clickable { confirmDel = a }.padding(8.dp)) { PathIcon("M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z", N.Ink300, 20.dp) }
                 }
             }
             if (accounts.isEmpty()) Text("ยังไม่มีบัญชีที่บันทึกไว้", fontSize = 13.sp, color = N.Ink500, modifier = Modifier.padding(horizontal = 20.dp, vertical = 14.dp))
             HorizontalDivider(Modifier.padding(vertical = 8.dp), color = N.Line)
-            Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp).clip(RoundedCornerShape(14.dp)).clickable { onAdd() }.padding(horizontal = 10.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp).clip(RoundedCornerShape(14.dp)).clickable { if (accounts.size >= 3) android.widget.Toast.makeText(ctx, "เพิ่มได้สูงสุด 3 บัญชี ลบบัญชีเก่าออกก่อน", android.widget.Toast.LENGTH_SHORT).show() else onAdd() }.padding(horizontal = 10.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.size(42.dp).clip(CircleShape).background(N.B100), contentAlignment = Alignment.Center) { PathIcon(P.PLUS, N.B700, 22.dp) }
                 Spacer(Modifier.width(12.dp)); Text("เพิ่มบัญชีอื่น", fontSize = 14.5.sp, fontWeight = FontWeight.Bold, color = N.Ink900)
             }
