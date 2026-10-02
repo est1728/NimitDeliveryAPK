@@ -21,8 +21,7 @@ import org.json.JSONObject
 
 // หน้าที่ยังไม่ได้แปลง (ทยอยเปลี่ยนเป็นหน้าจริงทีละหน้า)
 private val pendingRoutes = listOf(
-    "address", "chat", "review",
-    "reviews/{type}/{id}"
+    "address", "review",
 )
 
 @Composable
@@ -88,6 +87,8 @@ fun NimitNav() {
         couponRoute(session, nav)
         notificationsRoute(session, nav)
         reorderRoute(session, nav)
+        chatRoute(session, nav)
+        reviewsRoute(nav)
         pendingRoutes.forEach { r ->
             composable(r) { Pending(r) { nav.popBackStack() } }
         }

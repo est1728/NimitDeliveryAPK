@@ -5,7 +5,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -20,7 +19,6 @@ import androidx.compose.ui.unit.sp
 import com.nimit.delivery.R
 import com.nimit.delivery.data.RiderInfo
 import com.nimit.delivery.data.RiderRepo
-import com.nimit.delivery.data.RiderSession
 import kotlinx.coroutines.launch
 
 @Composable
@@ -73,22 +71,5 @@ fun RiderLoginScreen(onLoggedIn: (RiderInfo) -> Unit) {
             text = if (loading) "กำลังตรวจสอบ…" else "เข้าสู่ระบบ",
             enabled = phone.length >= 9 && !loading
         ) { submit() }
-    }
-}
-
-@Composable
-fun RiderHomeScreen(session: RiderSession, onLogout: () -> Unit) {
-    Column(
-        Modifier.fillMaxSize().background(C.Gray).padding(24.dp),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Text("สวัสดี ${session.riderName ?: "ไรเดอร์"}", fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, color = C.Text)
-        Spacer(Modifier.height(4.dp))
-        Text(session.riderPhone ?: "", fontSize = 14.sp, color = C.Subtext)
-        Spacer(Modifier.height(16.dp))
-        Text("หน้างานกำลังแปลงเป็น Native", fontSize = 14.sp, color = C.Subtext)
-        Spacer(Modifier.height(24.dp))
-        OutlinedButton(onClick = onLogout) { Text("ออกจากระบบ") }
     }
 }
