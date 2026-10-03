@@ -17,11 +17,13 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.app.NotificationManagerCompat
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FirebaseFirestore
 import com.nimit.delivery.data.ACTIVE_STATUSES
@@ -38,6 +40,9 @@ import kotlinx.coroutines.tasks.await
 import java.util.Calendar
 
 private const val CHAT_PATH = "M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"
+private const val BAG_PATH = "M20 6h-2.18c.11-.31.18-.65.18-1a2.996 2.996 0 0 0-5.5-1.65l-.5.67-.5-.68C10.96 2.54 10.05 2 9 2 7.34 2 6 3.34 6 5c0 .35.07.69.18 1H4c-1.11 0-2 .89-2 2v11c0 1.11.89 2 2 2h16c1.11 0 2-.89 2-2V8c0-1.11-.89-2-2-2z"
+private const val MONEY_PATH = "M11.8 10.9c-2.27-.59-3-1.2-3-2.15 0-1.09 1.01-1.85 2.7-1.85 1.78 0 2.44.85 2.5 2.1h2.21c-.07-1.72-1.12-3.3-3.21-3.81V3h-3v2.16c-1.94.42-3.5 1.68-3.5 3.61 0 2.31 1.91 3.46 4.7 4.13 2.5.6 3 1.48 3 2.41 0 .69-.49 1.79-2.7 1.79-2.06 0-2.87-.92-2.98-2.1h-2.2c.12 2.19 1.76 3.42 3.68 3.83V21h3v-2.15c1.95-.37 3.5-1.5 3.5-3.55 0-2.84-2.43-3.81-4.7-4.4z"
+private const val MENU_PATH = "M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"
 private const val DOTS_PATH = "M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"
 
 @Composable
@@ -53,6 +58,7 @@ fun RiderHome(
     onLogout: () -> Unit
 ) {
     val ctx = LocalContext.current
+    val notifOn = remember { NotificationManagerCompat.from(ctx).areNotificationsEnabled() }
     val scope = rememberCoroutineScope()
     var tab by remember { mutableStateOf("orders") }
     var bottom by remember { mutableStateOf("food") }
@@ -71,18 +77,28 @@ fun RiderHome(
         }
     }
 
-    Box(Modifier.fillMaxSize().background(C.Gray)) {
+    Box(Modifier.fillMaxSize().background(Color(0xFFE8EEF7))) {
         Column(Modifier.fillMaxSize()) {
-            Column(Modifier.fillMaxWidth().background(C.Primary).padding(horizontal = 16.dp, vertical = 12.dp)) {
-                Text(riderName, color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.ExtraBold)
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.size(8.dp).clip(CircleShape).background(Color(0xFF4ADE80)))
-                    Spacer(Modifier.width(6.dp))
-                    Text("ออนไลน์", color = Color.White, fontSize = 12.sp)
+            Column(Modifier.fillMaxWidth().background(Brush.verticalGradient(listOf(Color(0xFF0C4AA6), Color(0xFF083570))))) {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Spacer(Modifier.width(38.dp))
+                    Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(riderName, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.ExtraBold, maxLines = 1)
+                        Spacer(Modifier.height(2.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Box(Modifier.size(7.dp).clip(CircleShape).background(Color(0xFF4ADE80)))
+                            Text("ออนไลน์", color = Color(0xFF86EFAC), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+                        Text("การแจ้งเตือน: " + (if (notifOn) "เปิดอยู่" else "ปิดอยู่"), color = Color.White.copy(alpha = 0.7f), fontSize = 10.sp)
+                    }
+                    Box(
+                        Modifier.size(38.dp).clip(RoundedCornerShape(12.dp)).background(Color.White.copy(alpha = 0.16f)).clickable { moreOpen = true },
+                        contentAlignment = Alignment.Center
+                    ) { PathIcon(MENU_PATH, Color.White, 18.dp) }
                 }
             }
             if (bottom == "food") {
-                Row(Modifier.fillMaxWidth().background(Color.White)) {
+                Row(Modifier.fillMaxWidth().background(Color(0xFF083570))) {
                     TabBtn("ออเดอร์", tab == "orders", Modifier.weight(1f)) { tab = "orders" }
                     TabBtn("ประวัติ", tab == "history", Modifier.weight(1f)) { tab = "history" }
                 }
@@ -96,7 +112,8 @@ fun RiderHome(
                     HistoryTab(store, onOpenOrder)
                 }
             }
-            Row(Modifier.fillMaxWidth().background(Color.White).padding(vertical = 6.dp)) {
+            Box(Modifier.fillMaxWidth().height(1.dp).background(Color(0xFFDDE5F0)))
+            Row(Modifier.fillMaxWidth().background(Color.White)) {
                 NavItem(Modifier.weight(1f), "bag", "รายการ", bottom == "food", 0) { bottom = "food" }
                 NavItem(Modifier.weight(1f), "money", "รายได้", false, 0) { onStatement() }
                 NavItem(Modifier.weight(1f), "chat", "ข้อความ", bottom == "messages", unreadTotal) { bottom = "messages" }
@@ -168,30 +185,27 @@ fun RiderHome(
 
 @Composable
 private fun TabBtn(label: String, on: Boolean, modifier: Modifier, onClick: () -> Unit) {
-    Column(modifier.clickable { onClick() }.padding(top = 12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(label, fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, color = if (on) C.Primary else C.Subtext)
-        Spacer(Modifier.height(10.dp))
-        Box(Modifier.fillMaxWidth().height(3.dp).background(if (on) C.Primary else Color.Transparent))
+    Box(modifier.height(44.dp).clickable { onClick() }, contentAlignment = Alignment.Center) {
+        Text(label, fontSize = 14.sp, fontWeight = if (on) FontWeight.ExtraBold else FontWeight.SemiBold, color = if (on) Color.White else Color.White.copy(alpha = 0.62f))
+        Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(3.dp).background(if (on) Color.White else Color.Transparent))
     }
 }
 
 @Composable
 private fun NavItem(modifier: Modifier, icon: String, label: String, on: Boolean, badge: Int, onClick: () -> Unit) {
     val tint: Color = if (on) C.Primary else C.Subtext
-    Column(modifier.clickable { onClick() }.padding(vertical = 4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+    Column(
+        modifier.clickable { onClick() }.padding(top = 8.dp, bottom = 10.dp),
+        horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(3.dp)
+    ) {
         Box(contentAlignment = Alignment.TopEnd) {
-            when (icon) {
-                "bag" -> PathIcon(P.BAG, tint, 24.dp)
-                "chat" -> PathIcon(CHAT_PATH, tint, 24.dp)
-                "more" -> PathIcon(DOTS_PATH, tint, 24.dp)
-                else -> Text("฿", fontSize = 21.sp, fontWeight = FontWeight.ExtraBold, color = tint)
-            }
+            PathIcon(when (icon) { "bag" -> BAG_PATH; "money" -> MONEY_PATH; "chat" -> CHAT_PATH; else -> DOTS_PATH }, tint, 22.dp)
             if (badge > 0) {
                 Text(badge.toString(), color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.Bold,
                     modifier = Modifier.clip(CircleShape).background(Color(0xFFEF4444)).padding(horizontal = 5.dp, vertical = 1.dp))
             }
         }
-        Text(label, fontSize = 11.sp, color = tint, fontWeight = FontWeight.Bold)
+        Text(label, fontSize = 10.sp, color = tint, fontWeight = FontWeight.Bold)
     }
 }
 
