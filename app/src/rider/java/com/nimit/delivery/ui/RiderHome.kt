@@ -9,6 +9,19 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.border
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
@@ -29,6 +42,7 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.nimit.delivery.data.ACTIVE_STATUSES
 import com.nimit.delivery.data.Ord
 import com.nimit.delivery.data.RiderApi
+import com.nimit.delivery.data.riderErrorText
 import com.nimit.delivery.data.RiderStore
 import com.nimit.delivery.data.STATUS_TH
 import com.nimit.delivery.data.fmtDate
@@ -42,6 +56,11 @@ import java.util.Calendar
 private const val CHAT_PATH = "M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"
 private const val BAG_PATH = "M20 6h-2.18c.11-.31.18-.65.18-1a2.996 2.996 0 0 0-5.5-1.65l-.5.67-.5-.68C10.96 2.54 10.05 2 9 2 7.34 2 6 3.34 6 5c0 .35.07.69.18 1H4c-1.11 0-2 .89-2 2v11c0 1.11.89 2 2 2h16c1.11 0 2-.89 2-2V8c0-1.11-.89-2-2-2z"
 private const val MONEY_PATH = "M11.8 10.9c-2.27-.59-3-1.2-3-2.15 0-1.09 1.01-1.85 2.7-1.85 1.78 0 2.44.85 2.5 2.1h2.21c-.07-1.72-1.12-3.3-3.21-3.81V3h-3v2.16c-1.94.42-3.5 1.68-3.5 3.61 0 2.31 1.91 3.46 4.7 4.13 2.5.6 3 1.48 3 2.41 0 .69-.49 1.79-2.7 1.79-2.06 0-2.87-.92-2.98-2.1h-2.2c.12 2.19 1.76 3.42 3.68 3.83V21h3v-2.15c1.95-.37 3.5-1.5 3.5-3.55 0-2.84-2.43-3.81-4.7-4.4z"
+private const val MAIL_PATH = "M20 4H4v2l8 5 8-5V4zm0 4.236l-8 5-8-5V20h16V8.236z"
+private const val PIN_PATH = "M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"
+private const val BELL_PATH = "M12 22c1.1 0 2-.9 2-2h-4c0 1.1.89 2 2 2zm6-6v-5c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"
+private const val CHECK_PATH = "M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"
+private const val CAL_PATH = "M9 11H7v2h2v-2zm4 0h-2v2h2v-2zm4 0h-2v2h2v-2zm2-7h-1V2h-2v2H8V2H6v2H5c-1.11 0-1.99.9-1.99 2L3 20c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V9h14v11z"
 private const val MENU_PATH = "M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"
 private const val DOTS_PATH = "M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"
 
@@ -126,7 +145,7 @@ fun RiderHome(
                 Modifier.fillMaxWidth().padding(10.dp).clip(RoundedCornerShape(14.dp)).background(C.PrimaryDark).clickable { store.banner.value = null }.padding(14.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("🔔", fontSize = 20.sp)
+                PathIcon(BELL_PATH, Color.White, 20.dp)
                 Spacer(Modifier.width(10.dp))
                 Text(banner, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
             }
@@ -135,34 +154,19 @@ fun RiderHome(
 
     val j: Ord? = job
     if (j != null) {
-        AlertDialog(
-            onDismissRequest = { job = null },
-            title = { Text("งานใหม่! " + j.orderId) },
-            text = {
-                Column {
-                    KV("ร้านค้า", j.s("shopName"))
-                    KV("ลูกค้า", if (j.cust("name").isNotEmpty()) j.cust("name") else j.cust("phone"))
-                    KV("ที่อยู่", j.cust("address"))
-                    KV("รายได้ไรเดอร์", money(j.n("riderEarn")))
+        JobSheet(j, accepting, { job = null }) {
+            accepting = true
+            scope.launch {
+                try {
+                    RiderApi.acceptJob(j.id, store.riderId, riderName, riderPhone)
+                    store.banner.value = "รับงานแล้ว " + j.orderId
+                } catch (e: Exception) {
+                    Toast.makeText(ctx, riderErrorText(e), Toast.LENGTH_SHORT).show()
                 }
-            },
-            confirmButton = {
-                TextButton(enabled = !accepting, onClick = {
-                    accepting = true
-                    scope.launch {
-                        try {
-                            RiderApi.acceptJob(j.id, store.riderId, riderName, riderPhone)
-                            store.banner.value = "รับงานแล้ว " + j.orderId
-                        } catch (e: Exception) {
-                            Toast.makeText(ctx, "เกิดข้อผิดพลาด", Toast.LENGTH_SHORT).show()
-                        }
-                        accepting = false
-                        job = null
-                    }
-                }) { Text(if (accepting) "กำลังรับ..." else "✓ รับงาน") }
-            },
-            dismissButton = { TextButton(onClick = { job = null }) { Text("ไม่รับ") } }
-        )
+                accepting = false
+                job = null
+            }
+        }
     }
 
     if (moreOpen) {
@@ -229,47 +233,202 @@ private fun CardBox(onClick: () -> Unit, content: @Composable ColumnScope.() -> 
 }
 
 @Composable
-private fun OrdersTab(store: RiderStore, onPickJob: (Ord) -> Unit, onOpen: (String) -> Unit) {
-    val pending: List<Ord> = store.pending.value
-    val active: List<Ord> = store.myOrders.value.filter { ACTIVE_STATUSES.contains(it.status) }
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        if (pending.isNotEmpty()) {
-            item { Text("🔔 งานใหม่", fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, color = C.Primary) }
-            items(pending) { o: Ord ->
-                CardBox({ onPickJob(o) }) {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text(o.orderId, fontWeight = FontWeight.ExtraBold, color = C.Text)
-                        Text("งานใหม่!", fontSize = 12.sp, color = Color.White, fontWeight = FontWeight.Bold,
-                            modifier = Modifier.clip(RoundedCornerShape(8.dp)).background(Color(0xFFEF4444)).padding(horizontal = 8.dp, vertical = 2.dp))
-                    }
+private fun PingDot() {
+    val p = rememberInfiniteTransition(label = "ping").animateFloat(
+        0f, 1f, infiniteRepeatable(tween(900, easing = CubicBezierEasing(0f, 0f, 0.2f, 1f))), label = "pingP"
+    )
+    Box(
+        Modifier.size(8.dp)
+            .graphicsLayer { val k = (p.value / 0.75f).coerceAtMost(1f); scaleX = 1f + k; scaleY = 1f + k; alpha = 1f - k }
+            .clip(CircleShape).background(Color(0xFF4ADE80))
+    )
+}
+
+@Composable
+private fun NewJobSection(jobs: List<Ord>, onPick: (Ord) -> Unit) {
+    Column(Modifier.fillMaxWidth().background(Color.White)) {
+        Row(
+            Modifier.fillMaxWidth().background(Brush.linearGradient(listOf(Color(0xFF0C4AA6), Color(0xFF083570)))).padding(horizontal = 16.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally), verticalAlignment = Alignment.CenterVertically
+        ) {
+            PingDot()
+            Text("งานใหม่", fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = Color.White, letterSpacing = 1.sp)
+            PingDot()
+        }
+        jobs.forEach { j -> NewJobCard(j) { onPick(j) } }
+        Spacer(Modifier.height(10.dp))
+        Box(Modifier.fillMaxWidth().height(3.dp).background(Color(0xFF0C4AA6)))
+    }
+}
+
+@Composable
+private fun NewJobCard(o: Ord, onClick: () -> Unit) {
+    val pulse = rememberInfiniteTransition(label = "badge").animateFloat(1f, 0.6f, infiniteRepeatable(tween(750), RepeatMode.Reverse), label = "badgeA")
+    Column(
+        Modifier.fillMaxWidth().padding(start = 14.dp, end = 14.dp, top = 10.dp)
+            .shadow(3.dp, RoundedCornerShape(12.dp), ambientColor = Color(0x14000000), spotColor = Color(0x14000000))
+            .clip(RoundedCornerShape(12.dp)).background(Color.White).clickable { onClick() }
+            .padding(horizontal = 14.dp, vertical = 12.dp)
+    ) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            Text(if (o.orderId.isNotEmpty()) o.orderId else o.id, fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, color = C.Primary)
+            Text("งานใหม่!", fontSize = 10.sp, fontWeight = FontWeight.ExtraBold, color = Color.White,
+                modifier = Modifier.graphicsLayer { alpha = pulse.value }.clip(RoundedCornerShape(20.dp)).background(C.Primary).padding(horizontal = 10.dp, vertical = 3.dp))
+        }
+        Spacer(Modifier.height(6.dp))
+        Text(o.s("shopName").ifEmpty { "-" }, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = C.Text)
+        Spacer(Modifier.height(3.dp))
+        Text(o.cust("address").ifEmpty { "-" }, fontSize = 12.sp, color = C.Subtext)
+        Spacer(Modifier.height(8.dp))
+        Box(Modifier.fillMaxWidth().height(1.dp).background(Color(0xFFE8EEFF)))
+        Spacer(Modifier.height(8.dp))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            Text(money(o.n("grandTotal")), fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFF16A34A))
+            Text("รายได้ " + money(o.n("riderEarn")), fontSize = 12.sp, color = C.Subtext)
+        }
+    }
+}
+
+@Composable
+private fun JobRow(label: String, value: String, valueColor: Color) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        Text(label, fontSize = 14.sp, color = C.Subtext)
+        Text(value, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = valueColor, textAlign = TextAlign.End, modifier = Modifier.fillMaxWidth(0.6f))
+    }
+}
+
+@Composable
+private fun JobSheet(j: Ord, accepting: Boolean, onDismiss: () -> Unit, onAccept: () -> Unit) {
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Box(
+            Modifier.fillMaxSize().background(Color(0x80000000))
+                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onDismiss() },
+            contentAlignment = Alignment.BottomCenter
+        ) {
+            Column(
+                Modifier.widthIn(max = 480.dp).fillMaxWidth()
+                    .clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)).background(Color.White)
+                    .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { }
+                    .padding(start = 20.dp, end = 20.dp, top = 20.dp, bottom = 36.dp)
+            ) {
+                Column(Modifier.fillMaxWidth().padding(bottom = 16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("งานใหม่!", fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = C.Text)
                     Spacer(Modifier.height(4.dp))
-                    Text(o.s("shopName").ifEmpty { "-" }, fontSize = 14.sp, color = C.Text)
-                    Text(o.cust("address").ifEmpty { "-" }, fontSize = 12.sp, color = C.Subtext, maxLines = 2)
-                    Spacer(Modifier.height(6.dp))
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text(money(o.n("grandTotal")), fontSize = 13.sp, color = C.Text)
-                        Text("รายได้ " + money(o.n("riderEarn")), fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFF16A34A))
+                    Text(if (j.orderId.isNotEmpty()) j.orderId else j.id, fontSize = 13.sp, color = C.Subtext)
+                }
+                Column(
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Color(0xFFF5F6F8)).padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    JobRow("ร้านค้า", j.s("shopName").ifEmpty { "-" }, C.Text)
+                    JobRow("ลูกค้า", if (j.cust("name").isNotEmpty()) j.cust("name") else j.cust("phone").ifEmpty { "-" }, C.Text)
+                    JobRow("ที่อยู่", j.cust("address").ifEmpty { "-" }, C.Text)
+                    JobRow("รายได้ไรเดอร์", money(j.n("riderEarn")), Color(0xFF16A34A))
+                }
+                Spacer(Modifier.height(16.dp))
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Box(
+                        Modifier.weight(1f).height(52.dp).clip(RoundedCornerShape(16.dp)).background(Color.White)
+                            .border(2.dp, Color(0xFFE2E8F0), RoundedCornerShape(16.dp)).clickable { onDismiss() },
+                        contentAlignment = Alignment.Center
+                    ) { Text("ไม่รับ", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = C.Subtext) }
+                    Row(
+                        Modifier.weight(2f).height(52.dp)
+                            .shadow(6.dp, RoundedCornerShape(16.dp), ambientColor = Color(0x4D16A34A), spotColor = Color(0x4D16A34A))
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(Brush.linearGradient(listOf(Color(0xFF16A34A), Color(0xFF15803D))))
+                            .clickable(enabled = !accepting) { onAccept() },
+                        horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        if (accepting) {
+                            Text("กำลังรับ...", fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, color = Color.White)
+                        } else {
+                            PathIcon(CHECK_PATH, Color.White, 18.dp)
+                            Spacer(Modifier.width(6.dp))
+                            Text("รับงาน", fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, color = Color.White)
+                        }
                     }
                 }
             }
         }
-        if (pending.isEmpty() && active.isEmpty()) {
-            item { Text("ยังไม่มีออเดอร์", color = C.Subtext, fontSize = 14.sp, modifier = Modifier.fillMaxWidth().padding(32.dp)) }
+    }
+}
+
+@Composable
+private fun MetaRow(path: String, text: String) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.Top) {
+        Box(Modifier.padding(top = 1.dp)) { PathIcon(path, C.Subtext, 15.dp) }
+        Text(text, fontSize = 13.sp, color = C.Text)
+    }
+}
+
+@Composable
+private fun OrderCard(o: Ord, onClick: () -> Unit) {
+    Column(
+        Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 10.dp)
+            .shadow(6.dp, RoundedCornerShape(18.dp), ambientColor = Color(0x120F172A), spotColor = Color(0x120F172A))
+            .clip(RoundedCornerShape(18.dp)).background(Color.White).clickable { onClick() }
+    ) {
+        Row(
+            Modifier.fillMaxWidth().background(Brush.linearGradient(listOf(Color(0xFFE8F0FE), Color(0xFFF0F6FF)))).padding(horizontal = 16.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(o.orderId, fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, color = C.Primary)
+            Text(fmtTime(o.created), fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = C.Subtext)
         }
-        items(active) { o: Ord ->
-            CardBox({ onOpen(o.id) }) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text(o.orderId, fontWeight = FontWeight.ExtraBold, color = C.Primary)
-                    Text(fmtDate(o.created) + " " + fmtTime(o.created), fontSize = 12.sp, color = C.Subtext)
-                }
-                Spacer(Modifier.height(4.dp))
-                Text(o.s("shopName").ifEmpty { "-" }, fontSize = 14.sp, color = C.Text)
-                Text(o.cust("address").take(32).ifEmpty { "-" }, fontSize = 12.sp, color = C.Subtext)
-                Spacer(Modifier.height(6.dp))
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text(o.qty().toString() + " รายการ · " + (STATUS_TH[o.status] ?: ""), fontSize = 12.sp, color = C.Subtext)
-                    Text("รายได้ " + money(o.n("riderEarn")), fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFF16A34A))
-                }
+        Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+            MetaRow(MAIL_PATH, o.s("shopName").ifEmpty { "-" })
+            MetaRow(PIN_PATH, o.cust("address").take(32).ifEmpty { "-" })
+        }
+        Box(Modifier.fillMaxWidth().height(1.dp).background(Color(0xFFF1F3F6)))
+        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            Text(o.qty().toString() + " รายการ", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = C.Subtext)
+            Text("รายได้ " + money(o.n("riderEarn")), fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFF16A34A),
+                modifier = Modifier.clip(RoundedCornerShape(10.dp)).background(Color(0xFFDCFCE7)).padding(horizontal = 14.dp, vertical = 5.dp))
+        }
+    }
+}
+
+@Composable
+private fun DateDivider(text: String) {
+    Box(Modifier.fillMaxWidth().padding(top = 10.dp).background(Color(0xFFE8EDF2)).padding(horizontal = 16.dp, vertical = 7.dp)) {
+        Text(text, fontSize = 12.sp, fontWeight = FontWeight.ExtraBold, color = C.Subtext, letterSpacing = 0.4.sp)
+    }
+}
+
+@Composable
+private fun EmptyOrders() {
+    Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 60.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        Box(Modifier.size(76.dp).shadow(1.dp, CircleShape).clip(CircleShape).background(Color.White), contentAlignment = Alignment.Center) {
+            PathIcon(BAG_PATH, Color(0xFFCBD5E1), 34.dp)
+        }
+        Spacer(Modifier.height(16.dp))
+        Text("ยังไม่มีออเดอร์", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = C.Text)
+        Spacer(Modifier.height(4.dp))
+        Text("รอออเดอร์ที่แอดมินโยนให้", fontSize = 13.sp, color = C.Subtext)
+    }
+}
+
+@Composable
+private fun OrdersTab(store: RiderStore, onPickJob: (Ord) -> Unit, onOpen: (String) -> Unit) {
+    val pending: List<Ord> = store.pending.value
+    val active: List<Ord> = store.myOrders.value.filter { ACTIVE_STATUSES.contains(it.status) }.sortedByDescending { it.created?.time ?: 0L }
+    val rows = ArrayList<Pair<String?, Ord>>()
+    var last = ""
+    for (o in active) {
+        val ds: String = fmtDate(o.created)
+        val show: Boolean = ds.isNotEmpty() && ds != last
+        if (show) last = ds
+        rows.add(Pair(if (show) ds else null, o))
+    }
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
+        if (pending.isNotEmpty()) item { NewJobSection(pending, onPickJob) }
+        if (active.isEmpty()) item { EmptyOrders() }
+        items(rows) { r: Pair<String?, Ord> ->
+            Column(Modifier.fillMaxWidth()) {
+                val d: String? = r.first
+                if (d != null) DateDivider(d)
+                OrderCard(r.second) { onOpen(r.second.id) }
             }
         }
     }
@@ -304,7 +463,7 @@ private fun HistoryTab(store: RiderStore, onOpen: (String, Boolean) -> Unit) {
                         Text("เลือกวันที่", fontSize = 12.sp, color = C.Subtext)
                         Text(d.toString() + " " + TH_MONTHS[m] + " " + (y + 543), fontSize = 17.sp, fontWeight = FontWeight.ExtraBold, color = C.Text)
                     }
-                    Text("📅", fontSize = 24.sp)
+                    PathIcon(CAL_PATH, C.Primary, 24.dp)
                 }
                 Spacer(Modifier.height(12.dp))
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {

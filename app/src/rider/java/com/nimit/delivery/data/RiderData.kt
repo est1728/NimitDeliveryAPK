@@ -9,7 +9,12 @@ import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.firestore.QuerySnapshot
+import com.google.firebase.firestore.SetOptions
+import com.google.firebase.firestore.Transaction
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
@@ -175,6 +180,23 @@ class RiderStore(val riderId: String) {
     }
 }
 
+/** ข้อผิดพลาดทางธุรกิจที่แสดงให้ไรเดอร์เห็นได้ตรงๆ (เช่น งานถูกรับไปแล้ว) */
+class RiderBizException(msg: String) : Exception(msg)
+
+/** scope ระดับแอป: งานที่ต้องจบแม้ออกจากหน้าจอ (เช่น ส่งแจ้งเตือนลูกค้า) */
+object AppScope {
+    val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+}
+
+fun riderErrorText(e: Throwable): String {
+    var t: Throwable? = e
+    while (t != null) {
+        if (t is RiderBizException) return t.message ?: "เกิดข้อผิดพลาด"
+        t = t.cause
+    }
+    return "เกิดข้อผิดพลาด"
+}
+
 // ---------- การกระทำต่อ Firestore ----------
 object RiderApi {
     private val db: FirebaseFirestore get() = FirebaseFirestore.getInstance()
@@ -182,10 +204,83 @@ object RiderApi {
     private fun num(n: Double): Any = if (n % 1.0 == 0.0) n.toLong() else n
     private fun inc(n: Double): FieldValue = if (n % 1.0 == 0.0) FieldValue.increment(n.toLong()) else FieldValue.increment(n)
 
+    /** รับงานแบบ transaction: ต้องยัง pending และยังไม่มีไรเดอร์ ไม่งั้นถือว่าถูกรับไปแล้ว */
     suspend fun acceptJob(orderDocId: String, riderId: String, name: String, phone: String) {
-        db.collection("orders").document(orderDocId)
-            .update("status", "accepted", "riderId", riderId, "riderName", name, "riderPhone", phone, "riderReadAt", null, "riderViewingAt", null)
-            .await()
+        val ref = db.collection("orders").document(orderDocId)
+        db.runTransaction(Transaction.Function<Void?> { tx ->
+            val s: DocumentSnapshot = tx.get(ref)
+            val taken: Boolean = !s.exists() || s.getString("status") != "pending" || !s.getString("riderId").isNullOrEmpty()
+            if (taken) throw RiderBizException("งานนี้ถูกรับไปแล้ว")
+            val upd = HashMap<String, Any?>()
+            upd["status"] = "accepted"
+            upd["riderId"] = riderId
+            upd["riderName"] = name
+            upd["riderPhone"] = phone
+            upd["riderReadAt"] = null
+            upd["riderViewingAt"] = null
+            upd["updatedAt"] = FieldValue.serverTimestamp()
+            tx.update(ref, upd)
+            null
+        }).await()
+    }
+
+    /** เลื่อนสถานะแบบ compare-and-set: ต้องอยู่ที่สถานะ from จริง (ถ้าอยู่ที่ to แล้วถือว่าสำเร็จ ไม่ทำซ้ำ) */
+    suspend fun advance(orderDocId: String, from: String, to: String) {
+        val ref = db.collection("orders").document(orderDocId)
+        db.runTransaction(Transaction.Function<Void?> { tx ->
+            val st: String? = tx.get(ref).getString("status")
+            if (st == from) tx.update(ref, "status", to, "updatedAt", FieldValue.serverTimestamp())
+            else if (st != to) throw RiderBizException("สถานะออเดอร์เปลี่ยนไปแล้ว กรุณารีเฟรช")
+            null
+        }).await()
+    }
+
+    /**
+     * ส่งสำเร็จ: ทำทั้งหมดใน transaction เดียว (เปลี่ยนสถานะ done + หักกระเป๋าไรเดอร์ + เพิ่มกระเป๋ากลาง + บันทึก walletTx)
+     * กันซ้ำด้วยธง walletSettled และ doc id คงที่ settle_<orderDocId> คืน true ถ้าเพิ่งส่งสำเร็จรอบนี้
+     */
+    suspend fun completeDelivery(orderDocId: String, riderId: String, riderName: String): Boolean {
+        val oref = db.collection("orders").document(orderDocId)
+        val central = db.collection("wallet").document("central")
+        val txRef = db.collection("walletTx").document("settle_" + orderDocId)
+        return db.runTransaction(Transaction.Function<Boolean> { tx ->
+            val o: DocumentSnapshot = tx.get(oref)
+            val st: String? = o.getString("status")
+            val settled: Boolean = o.getBoolean("walletSettled") == true
+            var fresh = false
+            if (!o.exists()) throw RiderBizException("ไม่พบออเดอร์นี้")
+            if (st != "done" && !settled) {
+                if (st != "delivering") throw RiderBizException("สถานะออเดอร์เปลี่ยนไปแล้ว กรุณารีเฟรช")
+                val cut: Double = (o.get("walletCut") as? Number)?.toDouble() ?: 0.0
+                val rid: String = o.getString("riderId").let { if (it.isNullOrEmpty()) riderId else it }
+                val rname: String = o.getString("riderName").let { if (it.isNullOrEmpty()) riderName else it }
+                val oid: String = o.getString("orderId").let { if (it.isNullOrEmpty()) orderDocId else it }
+                tx.update(oref, "status", "done", "updatedAt", FieldValue.serverTimestamp(), "walletSettled", true)
+                if (cut > 0.0 && rid.isNotEmpty()) {
+                    val entry = HashMap<String, Any>()
+                    entry["riderId"] = rid
+                    entry["riderName"] = rname
+                    entry["amount"] = num(-cut)
+                    entry["type"] = "หักจากออเดอร์"
+                    entry["orderId"] = oid
+                    entry["note"] = ""
+                    entry["createdAt"] = FieldValue.serverTimestamp()
+                    entry["by"] = "system"
+                    tx.set(txRef, entry)
+                    tx.update(db.collection("riders").document(rid), "wallet", inc(-cut))
+                    val bal = HashMap<String, Any>()
+                    bal["balance"] = inc(cut)
+                    tx.set(central, bal, SetOptions.merge())
+                }
+                fresh = true
+            }
+            fresh
+        }).await()
+    }
+
+    /** ส่งแจ้งเตือนลูกค้าด้วย scope ระดับแอป (ไม่ถูกยกเลิกเมื่อออกจากหน้าจอ) เรียกหลังอัปเดตสถานะสำเร็จเท่านั้น */
+    fun notifyCustomerAsync(o: Ord, status: String) {
+        AppScope.scope.launch { notifyCustomer(o, status) }
     }
 
     suspend fun setStatus(orderDocId: String, status: String) {
@@ -266,11 +361,11 @@ object RiderApi {
         val title: String
         val body: String
         when (status) {
-            "accepted" -> { title = "ไรเดอร์รับงานแล้ว 🛵"; body = "ไรเดอร์กำลังเตรียมไปรับอาหารจากร้านค้าของคุณ" }
+            "accepted" -> { title = "ไรเดอร์รับงานแล้ว"; body = "ไรเดอร์กำลังเตรียมไปรับอาหารจากร้านค้าของคุณ" }
             "picking" -> { title = "ไรเดอร์กำลังไปร้าน"; body = "ไรเดอร์กำลังเดินทางไปที่ร้านค้าแล้ว" }
             "arrived" -> { title = "ไรเดอร์ถึงร้านแล้ว"; body = "ไรเดอร์ถึงร้านค้าแล้ว กำลังรอรับอาหารของคุณ" }
-            "delivering" -> { title = "กำลังนำอาหารมาส่ง 🍽️"; body = "ไรเดอร์รับอาหารแล้ว กำลังเดินทางมาส่งคุณ" }
-            "done" -> { title = "จัดส่งสำเร็จแล้ว ✅"; body = "ขอบคุณที่ใช้บริการ Nimit Delivery" }
+            "delivering" -> { title = "กำลังนำอาหารมาส่ง"; body = "ไรเดอร์รับอาหารแล้ว กำลังเดินทางมาส่งคุณ" }
+            "done" -> { title = "จัดส่งสำเร็จแล้ว"; body = "ขอบคุณที่ใช้บริการ Nimit Delivery" }
             else -> return
         }
         val phone: String = o.cust("phone")
@@ -283,6 +378,8 @@ object RiderApi {
             j.put("title", title)
             j.put("body", body)
             j.put("orderId", o.orderId)
+            j.put("orderDocId", o.id)
+            j.put("route", "track/" + o.id)
             j.put("url", "/track.html")
             withContext(Dispatchers.IO) { postJson("https://nimitdelivery.vercel.app/api/send-order-notification", j) }
         } catch (e: Exception) { }

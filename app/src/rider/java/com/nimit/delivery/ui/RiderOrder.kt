@@ -28,6 +28,7 @@ import com.nimit.delivery.data.RiderApi
 import com.nimit.delivery.data.RiderStore
 import com.nimit.delivery.data.fmtDateTime
 import com.nimit.delivery.data.money
+import com.nimit.delivery.data.riderErrorText
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -140,7 +141,7 @@ fun RiderOrderScreen(store: RiderStore, orderId: String, fromHistory: Boolean, o
                                     Text("- " + nm + (if (pr > 0.0) " +" + money(pr) else ""), fontSize = 12.sp, color = C.Subtext)
                                 }
                                 val note: String = i["note"]?.toString() ?: ""
-                                if (note.isNotEmpty()) Text("📝 " + note, fontSize = 12.sp, color = Color(0xFFDC2626), fontWeight = FontWeight.Bold)
+                                if (note.isNotEmpty()) Text("หมายเหตุ: " + note, fontSize = 12.sp, color = Color(0xFFDC2626), fontWeight = FontWeight.Bold)
                             }
                             Text("x" + qty, fontSize = 13.sp, color = C.Text, modifier = Modifier.padding(horizontal = 10.dp))
                             Text(money(price * qty), fontSize = 13.sp, color = C.Text, fontWeight = FontWeight.Bold)
@@ -185,11 +186,14 @@ fun RiderOrderScreen(store: RiderStore, orderId: String, fromHistory: Boolean, o
                         busy = true
                         scope.launch {
                             try {
-                                RiderApi.setStatus(cur.id, next)
-                                scope.launch { RiderApi.notifyCustomer(cur, next) }
-                                if (next == "done") RiderApi.finishWallet(cur, store.riderId, riderName)
+                                if (next == "done") {
+                                    if (RiderApi.completeDelivery(cur.id, store.riderId, riderName)) RiderApi.notifyCustomerAsync(cur, next)
+                                } else {
+                                    RiderApi.advance(cur.id, cur.status, next)
+                                    RiderApi.notifyCustomerAsync(cur, next)
+                                }
                             } catch (e: Exception) {
-                                Toast.makeText(ctx, "เกิดข้อผิดพลาด", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(ctx, riderErrorText(e), Toast.LENGTH_SHORT).show()
                             }
                             confirm = false
                             busy = false

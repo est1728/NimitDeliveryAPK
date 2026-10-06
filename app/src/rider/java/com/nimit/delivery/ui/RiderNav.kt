@@ -40,7 +40,7 @@ fun RiderNav() {
             s.onNewJob = { o: Ord ->
                 val txt: String = "งานใหม่มาแล้ว! " + o.orderId + " · " + o.s("shopName")
                 s.banner.value = txt
-                RiderSound.alert(ctx, "🔔 งานใหม่มาแล้ว!", o.orderId + " · " + o.s("shopName") + " · ฿" + Math.round(o.n("grandTotal")))
+                RiderSound.alert(ctx, "งานใหม่มาแล้ว!", o.orderId + " · " + o.s("shopName") + " · ฿" + Math.round(o.n("grandTotal")))
             }
             s.start()
         }
