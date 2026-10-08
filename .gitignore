@@ -3,3 +3,10 @@ build/
 local.properties
 .idea/
 *.iml
+/ChatScreen.new.kt
+/ChatPhotoProvider.kt
+/chat-look.sh
+/chat-backup/
+/*.patch
+/wire-*.sh
+/ap.sh
