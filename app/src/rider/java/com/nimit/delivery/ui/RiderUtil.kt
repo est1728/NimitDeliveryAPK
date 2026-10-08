@@ -46,6 +46,7 @@ fun inMonth(d: Date?, y: Int, m: Int): Boolean {
 object RiderSound {
     /** เสียงเตือน + แจ้งเตือนในเครื่อง ตอนมีงานใหม่ (ใช้ได้ตอนแอปเปิดอยู่ ส่วน push ตอนปิดแอปทำในเฟส 5) */
     fun alert(ctx: Context, title: String, body: String) {
+        if (!ctx.getSharedPreferences("rider_prefs", 0).getBoolean("notif_on", true)) return
         try {
             val tg = ToneGenerator(AudioManager.STREAM_NOTIFICATION, 100)
             tg.startTone(ToneGenerator.TONE_PROP_BEEP2, 1500)

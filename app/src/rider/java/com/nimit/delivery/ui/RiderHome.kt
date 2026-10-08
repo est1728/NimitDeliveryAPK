@@ -61,6 +61,11 @@ private const val PIN_PATH = "M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-
 private const val BELL_PATH = "M12 22c1.1 0 2-.9 2-2h-4c0 1.1.89 2 2 2zm6-6v-5c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"
 private const val CHECK_PATH = "M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"
 private const val CAL_PATH = "M9 11H7v2h2v-2zm4 0h-2v2h2v-2zm4 0h-2v2h2v-2zm2-7h-1V2h-2v2H8V2H6v2H5c-1.11 0-1.99.9-1.99 2L3 20c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V9h14v11z"
+private const val WALLET_PATH = "M21 18v1c0 1.1-.9 2-2 2H5c-1.11 0-2-.9-2-2V5c0-1.1.89-2 2-2h14c1.1 0 2 .9 2 2v1h-9c-1.11 0-2 .9-2 2v8c0 1.1.89 2 2 2h9z"
+private const val CLOCK_PATH = "M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm.5 13H11V7h1.5v8z"
+private const val USER_PATH = "M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"
+private const val STAR_PATH = "M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"
+private const val LOGOUT_PATH = "M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z"
 private const val MENU_PATH = "M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"
 private const val DOTS_PATH = "M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"
 
@@ -77,7 +82,8 @@ fun RiderHome(
     onLogout: () -> Unit
 ) {
     val ctx = LocalContext.current
-    val notifOn = remember { NotificationManagerCompat.from(ctx).areNotificationsEnabled() }
+    val prefs = remember { ctx.getSharedPreferences("rider_prefs", 0) }
+    var notifOn by remember { mutableStateOf(prefs.getBoolean("notif_on", true) && NotificationManagerCompat.from(ctx).areNotificationsEnabled()) }
     val scope = rememberCoroutineScope()
     var tab by remember { mutableStateOf("orders") }
     var bottom by remember { mutableStateOf("food") }
@@ -150,6 +156,26 @@ fun RiderHome(
                 Text(banner, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
             }
         }
+        RiderSidebar(
+            moreOpen, riderName, riderPhone, notifOn, { moreOpen = false },
+            {
+                val next: Boolean = !notifOn
+                prefs.edit().putBoolean("notif_on", next).apply()
+                val sysOn: Boolean = NotificationManagerCompat.from(ctx).areNotificationsEnabled()
+                notifOn = next && sysOn
+                if (next && !sysOn) {
+                    try {
+                        ctx.startActivity(
+                            android.content.Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                                .putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, ctx.packageName)
+                                .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                        )
+                    } catch (e: Exception) { }
+                }
+            },
+            { moreOpen = false; onWallet() }, { moreOpen = false; onShift() }, { moreOpen = false; onAccount() },
+            { moreOpen = false; onReviews() }, { moreOpen = false; onLogout() }
+        )
     }
 
     val j: Ord? = job
@@ -168,22 +194,81 @@ fun RiderHome(
             }
         }
     }
+}
 
-    if (moreOpen) {
-        AlertDialog(
-            onDismissRequest = { moreOpen = false },
-            title = { Text(riderName) },
-            text = {
-                Column {
-                    MenuRow("กระเป๋าเงิน") { moreOpen = false; onWallet() }
-                    MenuRow("กะงาน") { moreOpen = false; onShift() }
-                    MenuRow("บัญชีของฉัน") { moreOpen = false; onAccount() }
-                    MenuRow("รีวิวของฉัน") { moreOpen = false; onReviews() }
-                    MenuRow("ออกจากระบบ") { moreOpen = false; onLogout() }
-                }
-            },
-            confirmButton = { TextButton(onClick = { moreOpen = false }) { Text("ปิด") } }
+@Composable
+private fun SbRow(path: String, label: String, tint: Color, textColor: Color, divider: Boolean, onClick: () -> Unit, trailing: @Composable () -> Unit) {
+    Column {
+        Row(
+            Modifier.fillMaxWidth().clickable { onClick() }.padding(horizontal = 20.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            PathIcon(path, tint, 20.dp)
+            Text(label, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = textColor, modifier = Modifier.weight(1f))
+            trailing()
+        }
+        if (divider) Box(Modifier.fillMaxWidth().height(1.dp).background(Color(0xFFF5F6F8)))
+    }
+}
+
+@Composable
+private fun SbToggle(on: Boolean, onClick: () -> Unit) {
+    val x = androidx.compose.animation.core.animateDpAsState(if (on) 21.dp else 3.dp, tween(200), label = "thumb")
+    Box(
+        Modifier.size(width = 40.dp, height = 22.dp).clip(RoundedCornerShape(12.dp))
+            .background(if (on) Color(0xFF16A34A) else Color(0xFFCBD5E1)).clickable { onClick() }
+    ) {
+        Box(Modifier.offset(x = x.value, y = 3.dp).size(16.dp).clip(CircleShape).background(Color.White))
+    }
+}
+
+@Composable
+private fun BoxScope.RiderSidebar(
+    open: Boolean, name: String, phone: String, notifOn: Boolean,
+    onClose: () -> Unit, onToggleNotif: () -> Unit,
+    onWallet: () -> Unit, onShift: () -> Unit, onAccount: () -> Unit, onReviews: () -> Unit, onLogout: () -> Unit
+) {
+    androidx.compose.animation.AnimatedVisibility(
+        visible = open,
+        enter = androidx.compose.animation.fadeIn(tween(180)),
+        exit = androidx.compose.animation.fadeOut(tween(160))
+    ) {
+        Box(
+            Modifier.fillMaxSize().background(Color(0x66000000))
+                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onClose() }
         )
+    }
+    androidx.compose.animation.AnimatedVisibility(
+        visible = open,
+        modifier = Modifier.align(Alignment.CenterEnd),
+        enter = androidx.compose.animation.slideInHorizontally(tween(220, easing = androidx.compose.animation.core.FastOutSlowInEasing)) { it },
+        exit = androidx.compose.animation.slideOutHorizontally(tween(180, easing = androidx.compose.animation.core.FastOutSlowInEasing)) { it }
+    ) {
+        Column(
+            Modifier.width(280.dp).fillMaxHeight().shadow(16.dp).background(Color.White)
+                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { }
+        ) {
+            Column(
+                Modifier.fillMaxWidth().background(Brush.linearGradient(listOf(Color(0xFF0C4AA6), Color(0xFF083570))))
+                    .padding(start = 20.dp, end = 20.dp, top = 24.dp, bottom = 20.dp)
+            ) {
+                Box(Modifier.size(56.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.18f)), contentAlignment = Alignment.Center) {
+                    PathIcon(USER_PATH, Color.White, 28.dp)
+                }
+                Spacer(Modifier.height(10.dp))
+                Text(name, fontSize = 16.sp, fontWeight = FontWeight.ExtraBold, color = Color.White)
+                Spacer(Modifier.height(2.dp))
+                Text(phone, fontSize = 12.sp, color = Color.White.copy(alpha = 0.8f))
+            }
+            SbRow(BELL_PATH, "เปิดการแจ้งเตือน", C.Subtext, C.Text, true, onToggleNotif) { SbToggle(notifOn, onToggleNotif) }
+            SbRow(WALLET_PATH, "กระเป๋าเงิน", C.Subtext, C.Text, true, onWallet) { }
+            SbRow(CLOCK_PATH, "กะงาน", C.Subtext, C.Text, true, onShift) { }
+            SbRow(USER_PATH, "บัญชีของฉัน", C.Subtext, C.Text, true, onAccount) { }
+            SbRow(STAR_PATH, "รีวิวของฉัน", C.Subtext, C.Text, true, onReviews) { }
+            Spacer(Modifier.weight(1f))
+            SbRow(LOGOUT_PATH, "ออกจากระบบ", Color(0xFFDC2626), Color(0xFFDC2626), false, onLogout) { }
+            Spacer(Modifier.height(16.dp))
+        }
     }
 }
 
