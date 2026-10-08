@@ -92,7 +92,7 @@ private const val IC_PLAY = "M8 5v14l11-7z"
 private const val IC_PAUSE = "M6 19h4V5H6v14zm8-14v14h4V5h-4z"
 private const val IC_CHAT = "M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"
 
-private class ChatMsg(val id: String, val sender: String, val senderName: String, val type: String, val content: String, val ms: Long)
+private class ChatMsg(val id: String, val sender: String, val senderName: String, val type: String, val content: String, val ms: Long, val wave: List<Int> = emptyList())
 
 private fun roleLabel(r: String) = when (r) { "customer" -> "ลูกค้า"; "rider" -> "ไรเดอร์"; "admin" -> "แอดมิน"; else -> r }
 private fun dateStr(ms: Long): String { val c = Calendar.getInstance().apply { timeInMillis = ms }; return "%d %s %02d".format(c.get(Calendar.DAY_OF_MONTH), CH_MON[c.get(Calendar.MONTH)], (c.get(Calendar.YEAR) + 543) % 100) }
@@ -144,6 +144,22 @@ private class ChatPlayer(val ctx: Context) {
     fun stop() { try { mp?.release() } catch (_: Exception) {}; mp = null; playingId = null; progress = 0f; posSec = 0 }
 }
 
+/** ระดับเสียง 0.05–1 จากแอมพลิจูดดิบ (สเกลเดซิเบล 50 dB) — เสียงพูดปกติจะได้ราว 0.6–0.85 เงียบจะต่ำ */
+private fun ampLevel(a: Int): Float {
+    if (a <= 0) return 0.05f
+    val db = 20f * kotlin.math.log10(a / 32767f)
+    return ((db + 50f) / 50f).coerceIn(0.05f, 1f)
+}
+
+/** ย่อ/ขยายรายการระดับเสียงให้เหลือ n ค่า (เฉลี่ยเป็นช่วง) */
+private fun resampleLevels(src: List<Float>, n: Int): List<Float> {
+    if (src.isEmpty()) return List(n) { 0.05f }
+    return List(n) { i ->
+        val a = (i * src.size / n).coerceAtMost(src.size - 1); val b = (((i + 1) * src.size) / n).coerceIn(a + 1, src.size)
+        src.subList(a, b).average().toFloat()
+    }
+}
+
 private class ChatRec(val ctx: Context) {
     private var mr: MediaRecorder? = null; private var file: File? = null; private var t0 = 0L
     fun start(): Boolean = try {
@@ -153,7 +169,7 @@ private class ChatRec(val ctx: Context) {
         r.setAudioChannels(1); r.setAudioSamplingRate(16000); r.setAudioEncodingBitRate(32000); r.setOutputFile(f.path); r.prepare(); r.start()
         mr = r; file = f; t0 = System.currentTimeMillis(); true
     } catch (_: Exception) { false }
-    fun amp(): Float = try { ((mr?.maxAmplitude ?: 0) / 12000f).coerceIn(0f, 1f) } catch (_: Exception) { 0f }
+    fun rawAmp(): Int = try { mr?.maxAmplitude ?: 0 } catch (_: Exception) { 0 }
     fun stop(): Pair<File, Int>? {
         val r = mr ?: return null; mr = null
         try { r.stop() } catch (_: Exception) { try { r.release() } catch (_: Exception) {}; return null }
@@ -176,10 +192,11 @@ fun ChatScreen(orderId: String, role: String, onBack: () -> Unit) {
     var otherRead by remember { mutableStateOf<Map<String, Long>>(emptyMap()) }
     var text by remember { mutableStateOf("") }
     var pendingImg by remember { mutableStateOf<String?>(null) }
-    var pendingAudio by remember { mutableStateOf<Pair<File, Int>?>(null) }
+    var pendingAudio by remember { mutableStateOf<Triple<File, Int, List<Int>>?>(null) }
     var recording by remember { mutableStateOf(false) }
     var recSec by remember { mutableIntStateOf(0) }
     var amps by remember { mutableStateOf<List<Float>>(emptyList()) }
+    val waveAll = remember { mutableListOf<Float>() }
     var viewImg by remember { mutableStateOf<String?>(null) }
     var camUri by remember { mutableStateOf<Uri?>(null) }
     val player = remember { ChatPlayer(ctx) }
@@ -189,7 +206,7 @@ fun ChatScreen(orderId: String, role: String, onBack: () -> Unit) {
 
     DisposableEffect(Unit) { onDispose { player.stop(); rec.cancel() } }
     LaunchedEffect(player.playingId) { while (player.playingId != null) { player.tick(); delay(100) } }
-    LaunchedEffect(recording) { amps = emptyList(); while (recording) { delay(80); amps = (amps + rec.amp()).takeLast(24) } }
+    LaunchedEffect(recording) { amps = emptyList(); waveAll.clear(); var prev = 0.05f; while (recording) { delay(60); val lv = maxOf(ampLevel(rec.rawAmp()), prev * 0.7f); prev = lv; waveAll.add(lv); amps = (amps + lv).takeLast(96) } }
     LaunchedEffect(recording) { recSec = 0; var t = 0; while (recording) { delay(1000); t++; recSec = t } }
 
     fun markRead() { if (orderId.isNotEmpty()) db.collection("chats").document(orderId).set(mapOf("unread_$role" to 0, "${role}ReadAt" to FieldValue.serverTimestamp()), SetOptions.merge()) }
@@ -211,7 +228,8 @@ fun ChatScreen(orderId: String, role: String, onBack: () -> Unit) {
         val r2 = db.collection("chats").document(orderId).collection("messages").orderBy("timestamp").limit(200).addSnapshotListener { snap, _ ->
             msgs = snap?.documents?.map { d ->
                 ChatMsg(d.id, d.getString("sender").orEmpty(), d.getString("senderName").orEmpty(), d.getString("type") ?: "text", d.getString("content").orEmpty(),
-                    d.getTimestamp("timestamp", DocumentSnapshot.ServerTimestampBehavior.ESTIMATE)?.toDate()?.time ?: System.currentTimeMillis())
+                    d.getTimestamp("timestamp", DocumentSnapshot.ServerTimestampBehavior.ESTIMATE)?.toDate()?.time ?: System.currentTimeMillis(),
+                    (d.get("waveform") as? List<*>)?.mapNotNull { (it as? Number)?.toInt() } ?: emptyList())
             } ?: emptyList()
             loaded = true; markRead()
         }
@@ -244,10 +262,10 @@ fun ChatScreen(orderId: String, role: String, onBack: () -> Unit) {
         }
     }
 
-    suspend fun sendMessage(type: String, content: String) {
+    suspend fun sendMessage(type: String, content: String, extra: Map<String, Any> = emptyMap()) {
         if (orderId.isEmpty() || orderId == "undefined" || orderId == "unknown") { Toast.makeText(ctx, "ไม่พบรหัสออเดอร์ กรุณาเข้าจากหน้าออเดอร์", Toast.LENGTH_SHORT).show(); return }
         try {
-            db.collection("chats").document(orderId).collection("messages").add(mapOf("sender" to role, "senderName" to myName, "type" to type, "content" to content, "timestamp" to FieldValue.serverTimestamp(), "readBy" to listOf(role))).await()
+            db.collection("chats").document(orderId).collection("messages").add(mapOf("sender" to role, "senderName" to myName, "type" to type, "content" to content, "timestamp" to FieldValue.serverTimestamp(), "readBy" to listOf(role)) + extra).await()
             val upd = mutableMapOf<String, Any>("lastMessage" to (if (type == "text") content else "[$type]"), "lastTime" to FieldValue.serverTimestamp())
             listOf("customer", "rider", "admin").forEach { r -> if (r != role) upd["unread_$r"] = FieldValue.increment(1) }
             db.collection("chats").document(orderId).set(upd, SetOptions.merge()).await()
@@ -261,7 +279,7 @@ fun ChatScreen(orderId: String, role: String, onBack: () -> Unit) {
         else if (au != null) {
             pendingAudio = null; player.stop()
             val b64 = withContext(Dispatchers.IO) { "data:audio/mp4;base64," + Base64.encodeToString(au.first.readBytes(), Base64.NO_WRAP) }
-            if (b64.length > 900000) Toast.makeText(ctx, "ไฟล์เสียงใหญ่เกินไป", Toast.LENGTH_SHORT).show() else sendMessage("audio", b64)
+            if (b64.length > 900000) Toast.makeText(ctx, "ไฟล์เสียงใหญ่เกินไป", Toast.LENGTH_SHORT).show() else sendMessage("audio", b64, mapOf("waveform" to au.third))
         }
     }
 
@@ -342,7 +360,8 @@ fun ChatScreen(orderId: String, role: String, onBack: () -> Unit) {
                                         "audio" -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(vertical = 2.dp)) {
                                             val playing = player.playingId == m.id
                                             Box(Modifier.size(32.dp).clip(CircleShape).background(if (me) Color.White.copy(alpha = 0.3f) else CH_P).clickable { player.playData(m.id, m.content) }, contentAlignment = Alignment.Center) { PathIcon(if (playing) IC_PAUSE else IC_PLAY, Color.White, 14.dp) }
-                                            Box(Modifier.width(100.dp).height(3.dp).clip(RoundedCornerShape(2.dp)).background(if (me) Color.White.copy(alpha = 0.3f) else Color(0xFFE2E8F0))) {
+                                            if (m.wave.isNotEmpty()) WaveBars(m.wave.map { it / 100f }, if (playing) player.progress else 0f, if (me) Color.White else CH_P, if (me) Color.White.copy(alpha = 0.35f) else Color(0xFFCBD5E1), Modifier.width(120.dp).height(28.dp))
+                                            else Box(Modifier.width(100.dp).height(3.dp).clip(RoundedCornerShape(2.dp)).background(if (me) Color.White.copy(alpha = 0.3f) else Color(0xFFE2E8F0))) {
                                                 Box(Modifier.fillMaxHeight().fillMaxWidth(if (playing) player.progress else 0f).background(if (me) Color.White else CH_P))
                                             }
                                             Text(fmtSec(if (playing) player.posSec else 0), fontSize = 11.sp, color = if (me) Color.White.copy(alpha = 0.8f) else CH_S, textAlign = TextAlign.End, modifier = Modifier.widthIn(min = 32.dp))
@@ -360,19 +379,11 @@ fun ChatScreen(orderId: String, role: String, onBack: () -> Unit) {
         // ── record panel ──
         if (recording) Row(Modifier.fillMaxWidth().background(Color(0xFFF1F5F9)).padding(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 20.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
             Text(fmtSec(recSec), fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = CH_RED, modifier = Modifier.widthIn(min = 60.dp))
-            Canvas(Modifier.weight(1f).height(40.dp).clip(RoundedCornerShape(8.dp)).background(Color(0xFFFEE2E2))) {
-                val bars = 24; val gap = 2.dp.toPx(); val bw = size.width / bars - gap
-                val vals = List(bars - amps.size) { 0f } + amps
-                for (i in 0 until bars) {
-                    val v = vals[i]; val bh = maxOf(4.dp.toPx(), v * size.height * 0.9f)
-                    val x = i * (bw + gap) + (size.width - bars * (bw + gap)) / 2
-                    drawRoundRect(Color(0xFFEF4444).copy(alpha = 0.4f + v * 0.6f), Offset(x, (size.height - bh) / 2), Size(bw, bh), CornerRadius(2.dp.toPx()))
-                }
-            }
+            WaveBars(amps, 1f, Color(0xFFEF4444), Color(0xFFEF4444), Modifier.weight(1f).height(40.dp).clip(RoundedCornerShape(8.dp)).background(Color(0xFFFEE2E2)).padding(horizontal = 6.dp), live = true)
             Box(Modifier.size(40.dp).clip(CircleShape).background(Color(0xFFE2E8F0)).clickable { rec.cancel(); recording = false }, contentAlignment = Alignment.Center) { PathIcon(IC_CLOSE, CH_S, 16.dp) }
             Box(Modifier.size(52.dp).shadow(6.dp, CircleShape, ambientColor = CH_RED.copy(alpha = 0.3f), spotColor = CH_RED.copy(alpha = 0.3f)).clip(CircleShape).background(CH_RED).clickable {
                 recording = false
-                rec.stop()?.let { pendingAudio = it; pendingImg = null }
+                rec.stop()?.let { (f, secs) -> pendingAudio = Triple(f, secs, resampleLevels(waveAll.toList(), 40).map { (it * 100).toInt().coerceIn(0, 100) }); pendingImg = null }
             }, contentAlignment = Alignment.Center) { Box(Modifier.size(18.dp).clip(RoundedCornerShape(3.dp)).background(Color.White)) }
         }
         // ── preview bar ──
@@ -385,7 +396,7 @@ fun ChatScreen(orderId: String, role: String, onBack: () -> Unit) {
                 val playing = player.playingId == "preview"
                 Row(Modifier.weight(1f).shadow(1.dp, RoundedCornerShape(12.dp)).clip(RoundedCornerShape(12.dp)).background(Color.White).padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     Box(Modifier.size(34.dp).clip(CircleShape).background(CH_P).clickable { player.play("preview", au.first) }, contentAlignment = Alignment.Center) { PathIcon(if (playing) IC_PAUSE else IC_PLAY, Color.White, 14.dp) }
-                    Box(Modifier.weight(1f).height(3.dp).clip(RoundedCornerShape(2.dp)).background(Color(0xFFE2E8F0))) { Box(Modifier.fillMaxHeight().fillMaxWidth(if (playing) player.progress else 0f).background(CH_P)) }
+                    WaveBars(au.third.map { it / 100f }, if (playing) player.progress else 0f, CH_P, Color(0xFFCBD5E1), Modifier.weight(1f).height(28.dp))
                     Text(fmtSec(if (playing) player.posSec else au.second), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = CH_S, textAlign = TextAlign.End, modifier = Modifier.widthIn(min = 34.dp))
                 }
             }
@@ -438,6 +449,24 @@ private fun ChatImg(src: String, modifier: Modifier, thumb: Boolean = false, ful
         else -> {
             val w = if (ratio >= 1f) 200.dp else (200 * ratio).dp
             androidx.compose.foundation.Image(b.asImageBitmap(), null, contentScale = ContentScale.Fit, modifier = modifier.width(w).aspectRatio(ratio).clip(RoundedCornerShape(10.dp)))
+        }
+    }
+}
+
+
+/** แท่งคลื่นเสียงแบบ Instagram/WhatsApp: live = วิ่งจากขวาไปซ้ายตามเสียงสด, ไม่ใช่ live = คลื่นที่บันทึกไว้ + ไฮไลต์ตามความคืบหน้าการเล่น */
+@Composable
+private fun WaveBars(levels: List<Float>, progress: Float, on: Color, off: Color, modifier: Modifier, live: Boolean = false) {
+    Canvas(modifier) {
+        val bw = 3.dp.toPx(); val gp = 2.dp.toPx(); val step = bw + gp
+        val n = (size.width / step).toInt().coerceAtLeast(1)
+        val vals = if (live) List(maxOf(0, n - levels.size)) { 0.05f } + levels.takeLast(n) else resampleLevels(levels, n)
+        val x0 = (size.width - n * step + gp) / 2
+        for (i in 0 until n) {
+            val v = vals[i].coerceIn(0.05f, 1f)
+            val h = maxOf(4.dp.toPx(), v * size.height)
+            val color = if (live) on.copy(alpha = 0.45f + 0.55f * v) else if ((i + 0.5f) / n <= progress) on else off
+            drawRoundRect(color, Offset(x0 + i * step, (size.height - h) / 2), Size(bw, h), CornerRadius(bw / 2))
         }
     }
 }
