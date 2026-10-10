@@ -95,6 +95,7 @@ fun ShopNav() {
                 onOpenOrder = { id: String -> nav.navigate("order/" + id) },
                 onReviews = { nav.navigate("reviews/shop/" + s.shopId) },
                 onLoyalty = { nav.navigate("loyalty") },
+                onEditInfo = { nav.navigate("manage") },
                 onLogout = {
                     session.logout()
                     holder.store = null
@@ -105,6 +106,10 @@ fun ShopNav() {
         composable("order/{id}") { e: NavBackStackEntry ->
             val s: ShopStore = holder.store ?: return@composable
             ShopOrderDetail(s, e.arguments?.getString("id") ?: "", onBack = { nav.popBackStack() })
+        }
+        composable("manage") {
+            val s: ShopStore = holder.store ?: return@composable
+            ShopManageScreen(s, onBack = { nav.popBackStack() })
         }
         composable("loyalty") {
             val s: ShopStore = holder.store ?: return@composable
