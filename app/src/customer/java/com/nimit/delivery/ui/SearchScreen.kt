@@ -1,5 +1,6 @@
 package com.nimit.delivery.ui
 
+import android.widget.Toast
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -117,15 +118,18 @@ fun SearchScreen(session: Session, onBack: () -> Unit, onOpenShop: (String) -> U
         ready = true
     }
 
-    fun remember(q: String) {
+    fun saveHistory(q: String) {
         val h = readHistory(prefs).filter { it != q }.toMutableList(); h.add(0, q)
         prefs.edit().putString("searchHistory", JSONArray(h.take(10)).toString()).apply()
         history = readHistory(prefs)
         if (q.length >= 2) scope.launch { try { Firebase.firestore.collection("searchLogs").document(q).set(mapOf("count" to FieldValue.increment(1), "updatedAt" to FieldValue.serverTimestamp()), SetOptions.merge()).await() } catch (_: Exception) {} }
     }
-    fun pick(shopId: String, shopName: String) {
-        remember(query.ifEmpty { shopName })
+    // กดผลค้นหา: ร้าน -> เข้าร้านนั้น / เมนู -> เข้าร้านแล้วเด้งป๊อบอัพเมนูนั้น (หน้าเมนูอ่านค่า openItem แล้วเปิดป๊อบอัพเอง)
+    fun pick(shopId: String, shopName: String, itemId: String? = null) {
+        if (shopId.isEmpty()) { Toast.makeText(ctx, "ไม่พบร้านของรายการนี้", Toast.LENGTH_SHORT).show(); return }
+        saveHistory(query.ifEmpty { shopName })
         session.selectedShopId = shopId; session.selectedShopName = shopName
+        prefs.edit().apply { if (itemId != null) putString("openItem", "$shopId|$itemId|${System.currentTimeMillis()}") else remove("openItem") }.apply()
         onOpenShop(shopId)
     }
 
@@ -189,7 +193,7 @@ fun SearchScreen(session: Session, onBack: () -> Unit, onOpenShop: (String) -> U
                     val shop = shops.firstOrNull { it.first == m.shopId }?.second
                     val price = pricing.withShopType(shop?.str("shopType")?.ifEmpty { "normal" } ?: "normal").calcPrice(num(m.d["price"]) ?: 0.0, num(m.d["gp"]) ?: 0.0)
                     val img = m.d.str("imgUrl").ifEmpty { m.d.str("imageUrl") }
-                    Row(Modifier.fillMaxWidth().clickable { pick(m.shopId, shop?.str("name").orEmpty()) }.padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Row(Modifier.fillMaxWidth().clickable { pick(m.shopId, shop?.str("name").orEmpty(), m.id) }.padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                         Box(Modifier.size(46.dp).clip(RoundedCornerShape(12.dp)).background(SGRAY), contentAlignment = Alignment.Center) {
                             if (img.isNotEmpty()) AsyncImage(img, null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()) else Text("🍽", fontSize = 20.sp)
                         }
