@@ -42,3 +42,11 @@ jobs:
         run: |
           cp app/build/outputs/apk/rider/release/*.apk NimitRider-build-${{ github.run_number }}.apk
           gh release create "rider-build-${{ github.run_number }}" NimitRider-build-${{ github.run_number }}.apk --repo est1728/NimitDelivery-releases --title "Rider ${{ github.run_number }}" --notes "rider test" --prerelease
+
+      - run: gradle assembleShopRelease --no-daemon
+      - name: Publish shop
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+        run: |
+          cp app/build/outputs/apk/shop/release/*.apk NimitShop-build-${{ github.run_number }}.apk
+          gh release create "shop-build-${{ github.run_number }}" NimitShop-build-${{ github.run_number }}.apk --repo est1728/NimitDelivery-releases --title "Shop ${{ github.run_number }}" --notes "shop test" --prerelease

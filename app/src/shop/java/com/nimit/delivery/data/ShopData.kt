@@ -248,6 +248,35 @@ object ShopApi {
         } catch (e: Exception) { }
     }
 
+    suspend fun saveLoyaltyTarget(shopId: String, target: Int) {
+        db.collection("shops").document(shopId).update("loyaltyTarget", target).await()
+    }
+
+    /** เพิ่มแต้มให้ลูกค้า (บัตร id = shopId_เบอร์) ถ้า lookupName จะค้นชื่อจาก customers/{เบอร์} ก่อน */
+    suspend fun addPoints(shopId: String, shopName: String, phone: String, customerName: String, pts: Long, lookupName: Boolean) {
+        var name: String = customerName
+        if (lookupName) {
+            try {
+                val c: DocumentSnapshot = db.collection("customers").document(phone).get().await()
+                if (c.exists()) name = c.getString("name") ?: ""
+            } catch (e: Exception) { }
+        }
+        val ref = db.collection("loyaltyCards").document(shopId + "_" + phone)
+        val snap: DocumentSnapshot = ref.get().await()
+        if (snap.exists()) {
+            val upd = HashMap<String, Any?>()
+            upd["points"] = FieldValue.increment(pts)
+            upd["updatedAt"] = FieldValue.serverTimestamp()
+            if (name.isNotEmpty()) upd["customerName"] = name
+            ref.update(upd).await()
+        } else {
+            val m = HashMap<String, Any?>()
+            m["shopId"] = shopId; m["shopName"] = shopName; m["customerPhone"] = phone; m["customerName"] = name
+            m["points"] = pts; m["updatedAt"] = FieldValue.serverTimestamp()
+            ref.set(m).await()
+        }
+    }
+
     suspend fun setLoyalty(shopId: String, on: Boolean, target: Int) {
         val upd = HashMap<String, Any?>()
         upd["loyaltyEnabled"] = on; upd["loyaltyTarget"] = target

@@ -72,11 +72,12 @@ import kotlinx.coroutines.launch
 private val SHOP_GRAD = Brush.linearGradient(listOf(C.Primary, C.PrimaryDark))
 
 @Composable
-fun ShopHome(store: ShopStore, onOpenOrder: (String) -> Unit, onReviews: () -> Unit, onLogout: () -> Unit) {
+fun ShopHome(store: ShopStore, onOpenOrder: (String) -> Unit, onReviews: () -> Unit, onLoyalty: () -> Unit, onLogout: () -> Unit) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     val shop: Map<String, Any> = store.shop.value
     var tab by remember { mutableIntStateOf(0) }
+    var page by remember { mutableIntStateOf(0) }
     var sidebar by remember { mutableStateOf(false) }
     var showClose by remember { mutableStateOf(false) }
     val isOpen: Boolean = shop["isOpen"] == true
@@ -87,12 +88,14 @@ fun ShopHome(store: ShopStore, onOpenOrder: (String) -> Unit, onReviews: () -> U
     val avatar: String = shop["avatarUrl"]?.toString() ?: ""
 
     BackHandler(sidebar) { sidebar = false }
+    BackHandler(!sidebar && page == 1) { page = 0 }
 
     val active: List<ShopOrd> = store.orders.value.filter { SHOP_ACTIVE_STATUSES.contains(it.status) }
     val history: List<ShopOrd> = store.orders.value.filter { it.status == "done" || it.status == "rejected" }
 
     Box(Modifier.fillMaxSize().background(C.Gray)) {
         Column(Modifier.fillMaxSize()) {
+            if (page == 0) {
             // หัวร้าน
             Row(Modifier.fillMaxWidth().background(SHOP_GRAD).statusBarsPadding().padding(horizontal = 16.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.size(46.dp).clip(RoundedCornerShape(14.dp)).background(Color.White.copy(alpha = 0.18f)), contentAlignment = Alignment.Center) {
@@ -141,6 +144,9 @@ fun ShopHome(store: ShopStore, onOpenOrder: (String) -> Unit, onReviews: () -> U
                     }
                 }
             }
+            } else {
+                Box(Modifier.weight(1f).fillMaxWidth()) { ShopIncomeScreen(store, onOpenOrder) { page = 0 } }
+            }
             // แถบเหตุผลที่ปิดร้าน
             if (!isOpen && reason.isNotEmpty()) {
                 val note = if (closeType == "temp") " (จะเปิดเองอัตโนมัติ)" else if (closeType == "long") " (จะเปิดเองตามรอบเวลาถัดไป)" else ""
@@ -151,9 +157,9 @@ fun ShopHome(store: ShopStore, onOpenOrder: (String) -> Unit, onReviews: () -> U
             }
             // เมนูล่าง
             Row(Modifier.fillMaxWidth().shadow(6.dp).background(Color.White).navigationBarsPadding()) {
-                ShopNavItem(P.HOME, "หน้าหลัก", true, Modifier.weight(1f)) { }
-                ShopNavItem(ShopP.DOLLAR, "รายได้", false, Modifier.weight(1f)) { shopToast(ctx, "หน้ารายได้กำลังจะมาในอัปเดตถัดไป") }
-                if (loyaltyOn) ShopNavItem(P.TAG, "สะสมแต้ม", false, Modifier.weight(1f)) { shopToast(ctx, "หน้าสะสมแต้มกำลังจะมาในอัปเดตถัดไป") }
+                ShopNavItem(P.HOME, "หน้าหลัก", page == 0, Modifier.weight(1f)) { page = 0 }
+                ShopNavItem(ShopP.DOLLAR, "รายได้", page == 1, Modifier.weight(1f)) { page = 1 }
+                if (loyaltyOn) ShopNavItem(P.TAG, "สะสมแต้ม", false, Modifier.weight(1f)) { onLoyalty() }
                 ShopNavItem(ShopP.MORE, "เพิ่มเติม", false, Modifier.weight(1f)) { sidebar = true }
             }
         }
