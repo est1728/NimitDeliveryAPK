@@ -81,7 +81,8 @@ private fun Sec(title: String, icon: String, content: @Composable ColumnScope.()
 @Composable
 private fun IRow(label: String, value: String, last: Boolean) {
     Row(Modifier.fillMaxWidth().padding(vertical = 12.dp)) {
-        Text(label, fontSize = 15.sp, color = C.Subtext, modifier = Modifier.width(112.dp))
+        Text(label, fontSize = 15.sp, color = C.Subtext, modifier = Modifier.width(104.dp))
+        Text(":", fontSize = 15.sp, color = C.Subtext, textAlign = TextAlign.Center, modifier = Modifier.width(20.dp))
         Text(if (value.isEmpty()) "-" else value, fontSize = 15.sp, color = C.Text, fontWeight = FontWeight.SemiBold, lineHeight = 22.sp, modifier = Modifier.weight(1f))
     }
     if (!last) Box(Modifier.fillMaxWidth().height(1.dp).background(Color(0xFFF1F4F9)))
