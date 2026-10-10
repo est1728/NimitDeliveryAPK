@@ -131,9 +131,17 @@ fun ShopManageScreen(store: ShopStore, onBack: () -> Unit) {
     var cropBmp by remember { mutableStateOf<Bitmap?>(null) }
 
     // โหลดข้อมูลร้านครั้งเดียวตอนเข้าหน้า (เหมือน getDoc ในเว็บ)
-    LaunchedEffect(store.shopLoaded.value) {
-        if (!inited && store.shopLoaded.value) {
-            val s: Map<String, Any> = store.shop.value
+    LaunchedEffect(store.shopId) {
+        run {
+            // ดึงเอกสารร้านสดๆ จากเซิร์ฟเวอร์ (เหมือน getDoc ในเว็บ) แล้วค่อยถอยไปใช้ข้อมูลที่ฟังอยู่
+            var s: Map<String, Any> = store.shop.value
+            try {
+                val ref = FirebaseFirestore.getInstance().collection("shops").document(store.shopId)
+                val snap = try { ref.get(com.google.firebase.firestore.Source.SERVER).await() } catch (e: Exception) { ref.get().await() }
+                val d: Map<String, Any>? = snap.data
+                if (d != null) s = d
+            } catch (e: Exception) { }
+            if (s.isEmpty()) return@LaunchedEffect
             title = s["name"]?.toString().takeIf { !it.isNullOrEmpty() } ?: "จัดการร้านค้า"
             name = s["name"]?.toString() ?: ""
             desc = s["desc"]?.toString() ?: ""

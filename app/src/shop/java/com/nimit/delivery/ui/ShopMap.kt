@@ -1,78 +1,130 @@
 package com.nimit.delivery.ui
 
 import android.annotation.SuppressLint
-import android.os.Handler
-import android.os.Looper
 import android.view.MotionEvent
-import android.webkit.JavascriptInterface
-import android.webkit.WebView
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import org.osmdroid.config.Configuration
+import org.osmdroid.events.MapEventsReceiver
+import org.osmdroid.tileprovider.tilesource.OnlineTileSourceBase
+import org.osmdroid.tileprovider.tilesource.TileSourceFactory
+import org.osmdroid.util.GeoPoint
+import org.osmdroid.util.MapTileIndex
+import org.osmdroid.views.MapView
+import org.osmdroid.views.overlay.MapEventsOverlay
+import org.osmdroid.views.overlay.Marker
 
 /** คำสั่งให้แผนที่เลื่อนไปตำแหน่งใหม่ (สร้างอินสแตนซ์ใหม่ทุกครั้งที่ต้องการสั่ง) */
 class ShopMapMove(val lat: Double, val lng: Double)
 
-private class ShopMapBridge(val onPick: (Double, Double) -> Unit) {
-    private val main = Handler(Looper.getMainLooper())
-    @JavascriptInterface
-    fun onPick(lat: Double, lng: Double) { main.post { onPick.invoke(lat, lng) } }
+private val shopEsriSat = object : OnlineTileSourceBase(
+    "EsriSat", 0, 19, 256, "",
+    arrayOf("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/")
+) {
+    override fun getTileURLString(pMapTileIndex: Long): String =
+        baseUrl + MapTileIndex.getZoom(pMapTileIndex) + "/" + MapTileIndex.getY(pMapTileIndex) + "/" + MapTileIndex.getX(pMapTileIndex)
 }
 
-private const val SHOP_MAP_HTML = """<!DOCTYPE html>
-<html><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<style>html,body,#m{margin:0;padding:0;height:100%;width:100%} .leaflet-top,.leaflet-bottom{z-index:50 !important;}</style>
-</head><body><div id="m"></div>
-<script>
-var map = L.map('m').setView([__LAT__, __LNG__], 15);
-var satelliteLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {attribution:'Tiles &copy; Esri', maxZoom:19, maxNativeZoom:19});
-var streetLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {attribution:'&copy; OpenStreetMap', maxZoom:19});
-satelliteLayer.addTo(map);
-L.control.layers({'ดาวเทียม':satelliteLayer, 'แผนที่ถนน':streetLayer}, null, {position:'topright'}).addTo(map);
-var marker = L.marker([__LAT__, __LNG__], {draggable:true}).addTo(map);
-marker.on('dragend', function(e){ var p = e.target.getLatLng(); Android.onPick(p.lat, p.lng); });
-map.on('click', function(e){ marker.setLatLng(e.latlng); Android.onPick(e.latlng.lat, e.latlng.lng); });
-function setPos(lat, lng, z){ map.setView([lat, lng], z); marker.setLatLng([lat, lng]); }
-setTimeout(function(){ map.invalidateSize(); }, 300);
-setTimeout(function(){ map.invalidateSize(); }, 1000);
-</script></body></html>"""
-
-/** แผนที่ปักหมุด (Leaflet ใน WebView เหมือนในเว็บ: ดาวเทียม/แผนที่ถนน แตะเพื่อปักหมุด ลากหมุดได้) */
-@SuppressLint("SetJavaScriptEnabled", "ClickableViewAccessibility")
+/** แผนที่ปักหมุด (osmdroid ตัวเดียวกับแอพลูกค้า): ดาวเทียม/แผนที่ถนน แตะเพื่อปักหมุด กดค้างที่หมุดแล้วลากเพื่อขยับ */
+@SuppressLint("ClickableViewAccessibility")
 @Composable
 fun ShopLocMap(lat: Double, lng: Double, move: ShopMapMove?, onPick: (Double, Double) -> Unit, modifier: Modifier = Modifier) {
-    var web by remember { mutableStateOf<WebView?>(null) }
-    val initLat = remember { lat }
-    val initLng = remember { lng }
-    LaunchedEffect(move, web) {
-        val w = web
-        if (move != null && w != null) w.evaluateJavascript("setPos(" + move.lat + "," + move.lng + ",16)", null)
-    }
-    AndroidView(
-        modifier = modifier,
-        factory = { c ->
-            WebView(c).apply {
-                settings.javaScriptEnabled = true
-                settings.domStorageEnabled = true
-                addJavascriptInterface(ShopMapBridge { a, b -> onPick(a, b) }, "Android")
-                // ลากแผนที่ในหน้าที่เลื่อนได้ ต้องไม่ให้หน้าแย่งนิ้ว
-                setOnTouchListener { v, e ->
-                    if (e.action == MotionEvent.ACTION_DOWN || e.action == MotionEvent.ACTION_MOVE) v.parent?.requestDisallowInterceptTouchEvent(true)
-                    false
-                }
-                val html: String = SHOP_MAP_HTML.replace("__LAT__", initLat.toString()).replace("__LNG__", initLng.toString())
-                loadDataWithBaseURL("https://nimitdelivery.vercel.app/", html, "text/html", "utf-8", null)
-                web = this
+    val ctx = LocalContext.current
+    var sat by remember { mutableStateOf(true) }
+    val pick = rememberUpdatedState(onPick)
+
+    val map: MapView = remember {
+        Configuration.getInstance().load(ctx, ctx.getSharedPreferences("osm", 0))
+        Configuration.getInstance().userAgentValue = ctx.packageName
+        Configuration.getInstance().apply {
+            osmdroidBasePath = java.io.File(ctx.filesDir, "osmdroid")
+            osmdroidTileCache = java.io.File(ctx.cacheDir, "osmdroid/tiles")
+            tileDownloadThreads = 6.toShort()
+            tileFileSystemThreads = 4.toShort()
+            expirationOverrideDuration = 7L * 24 * 3600 * 1000
+        }
+        MapView(ctx).apply {
+            setMultiTouchControls(true)
+            setTileSource(shopEsriSat)
+            isTilesScaledToDpi = true
+            controller.setZoom(15.0)
+            controller.setCenter(GeoPoint(lat, lng))
+            setOnTouchListener { v, e ->
+                if (e.action == MotionEvent.ACTION_DOWN || e.action == MotionEvent.ACTION_MOVE) v.parent.requestDisallowInterceptTouchEvent(true)
+                false
             }
-        },
-        onRelease = { it.destroy() }
-    )
+        }
+    }
+    val marker: Marker = remember {
+        Marker(map).apply {
+            position = GeoPoint(lat, lng)
+            isDraggable = true
+            setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
+            setOnMarkerDragListener(object : Marker.OnMarkerDragListener {
+                override fun onMarkerDrag(m: Marker) { }
+                override fun onMarkerDragEnd(m: Marker) { pick.value(m.position.latitude, m.position.longitude) }
+                override fun onMarkerDragStart(m: Marker) { }
+            })
+        }
+    }
+    remember {
+        map.overlays.add(MapEventsOverlay(object : MapEventsReceiver {
+            override fun singleTapConfirmedHelper(p: GeoPoint): Boolean {
+                marker.position = GeoPoint(p.latitude, p.longitude)
+                map.invalidate()
+                pick.value(p.latitude, p.longitude)
+                return true
+            }
+            override fun longPressHelper(p: GeoPoint): Boolean = false
+        }))
+        map.overlays.add(marker)
+        true
+    }
+
+    LaunchedEffect(move) {
+        if (move != null) {
+            marker.position = GeoPoint(move.lat, move.lng)
+            map.controller.setZoom(16.0)
+            map.controller.animateTo(GeoPoint(move.lat, move.lng))
+            map.invalidate()
+        }
+    }
+    LaunchedEffect(sat) {
+        val want: OnlineTileSourceBase = if (sat) shopEsriSat else TileSourceFactory.MAPNIK
+        if (map.tileProvider.tileSource.name() != want.name()) map.setTileSource(want)
+    }
+    DisposableEffect(Unit) { map.onResume(); onDispose { map.onPause(); map.onDetach() } }
+
+    Box(modifier) {
+        AndroidView(factory = { map }, modifier = Modifier.fillMaxSize())
+        Text(
+            if (sat) "แผนที่ถนน" else "ดาวเทียม", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = C.Primary,
+            modifier = Modifier.align(Alignment.TopEnd).padding(10.dp)
+                .shadow(4.dp, RoundedCornerShape(8.dp)).clip(RoundedCornerShape(8.dp)).background(Color.White)
+                .clickable { sat = !sat }.padding(horizontal = 10.dp, vertical = 8.dp)
+        )
+    }
 }
