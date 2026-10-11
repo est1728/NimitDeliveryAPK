@@ -23,6 +23,8 @@ import com.nimit.delivery.data.ShopOrd
 import com.nimit.delivery.data.ShopSession
 import com.nimit.delivery.data.ShopStore
 import com.nimit.delivery.data.shopEffectiveOpen
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import kotlinx.coroutines.delay
 
 private class ShopStoreHolder {
@@ -48,11 +50,20 @@ fun ShopNav() {
         if (s != null) {
             s.onNewOrder = { o: ShopOrd ->
                 s.banner.value = "🔔 ออเดอร์ใหม่! " + o.orderId + " · ฿" + com.nimit.delivery.data.shopNum(o.n("grandTotal"))
-                ShopSound.alert(ctx)
             }
             s.start()
         }
         onDispose { s?.stop() }
+    }
+
+    // เปิดบริการฟังออเดอร์เบื้องหน้า (เสียงเตือนวนซ้ำแม้ปิดหน้าจอ) เมื่อล็อกอินอยู่ / หยุดเมื่อออกจากระบบ
+    val notifPerm = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { _: Boolean -> ShopAlertService.start(ctx) }
+    LaunchedEffect(cur?.shopId) {
+        if (cur != null) {
+            val need: Boolean = android.os.Build.VERSION.SDK_INT >= 33 &&
+                androidx.core.content.ContextCompat.checkSelfPermission(ctx, android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED
+            if (need) notifPerm.launch(android.Manifest.permission.POST_NOTIFICATIONS) else ShopAlertService.start(ctx)
+        } else ShopAlertService.stop(ctx)
     }
 
     // เช็คทุก 30 วิ ว่าถึงเวลาเปิดร้านเองอัตโนมัติหรือยัง (ปิดยาว/ปิดชั่วคราว/ตารางเวลา) เหมือน checkAutoReopen ในเว็บ

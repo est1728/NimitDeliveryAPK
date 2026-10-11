@@ -51,6 +51,8 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -318,7 +320,7 @@ private fun ShopSidebar(
             visible, Modifier.align(Alignment.CenterEnd),
             enter = slideInHorizontally(tween(200)) { it }, exit = slideOutHorizontally(tween(200)) { it }
         ) {
-            Column(Modifier.width(280.dp).fillMaxHeight().shadow(16.dp).background(Color.White)) {
+            Column(Modifier.width(280.dp).fillMaxHeight().shadow(16.dp).background(Color.White).verticalScroll(rememberScrollState())) {
                 Column(Modifier.fillMaxWidth().background(SHOP_GRAD).statusBarsPadding().padding(horizontal = 20.dp, vertical = 24.dp)) {
                     Box(Modifier.size(56.dp).clip(RoundedCornerShape(16.dp)).background(Color.White.copy(alpha = 0.18f)), contentAlignment = Alignment.Center) {
                         if (avatar.isNotEmpty()) AsyncImage(avatar, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
@@ -340,6 +342,8 @@ private fun ShopSidebar(
                     }
                     ShopSwitch(loyaltyOn, C.Primary, Color(0xFFCBD5E1), 40.dp, 22.dp) { onLoyalty() }
                 }
+                HorizontalDivider(color = C.Gray)
+                ShopVolumeControl()
                 HorizontalDivider(color = C.Gray)
                 ShopSideItem(ShopP.LOGOUT, "ออกจากระบบ", "", ShopRed) { onLogout() }
             }
