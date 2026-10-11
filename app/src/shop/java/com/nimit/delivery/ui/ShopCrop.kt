@@ -174,7 +174,7 @@ fun ShopCropOverlay(bitmap: Bitmap, shape: String, ratio: Float, onCancel: () ->
         contentAlignment = Alignment.Center
     ) {
         Column(Modifier.padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(if (isMenu) "ปรับรูปเมนู" else if (isCircle) "ปรับรูปโปรไฟล์ร้าน" else "ปรับรูปแบนเนอร์", fontSize = 16.sp, fontWeight = FontWeight.ExtraBold, color = Color.White, modifier = Modifier.padding(bottom = 6.dp))
+            Text(if (isMenu) "ปรับรูปเมนู" else if (shape == "ad") "ปรับรูปโฆษณา" else if (isCircle) "ปรับรูปโปรไฟล์ร้าน" else "ปรับรูปแบนเนอร์", fontSize = 16.sp, fontWeight = FontWeight.ExtraBold, color = Color.White, modifier = Modifier.padding(bottom = 6.dp))
             Text("ลากเพื่อย้าย · ลากมุมเพื่อปรับขนาด", fontSize = 12.sp, color = Color.White.copy(alpha = 0.6f), textAlign = TextAlign.Center, modifier = Modifier.padding(bottom = 16.dp))
             Box(
                 Modifier.width(320.dp).height(with(density) { ch.toDp() }).clip(RoundedCornerShape(8.dp)).background(Color.Black)

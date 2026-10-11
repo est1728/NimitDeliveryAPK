@@ -96,6 +96,7 @@ fun ShopNav() {
                 onReviews = { nav.navigate("reviews/shop/" + s.shopId) },
                 onLoyalty = { nav.navigate("loyalty") },
                 onEditInfo = { nav.navigate("manage") },
+                onAds = { nav.navigate("ads") },
                 onLogout = {
                     session.logout()
                     holder.store = null
@@ -110,6 +111,10 @@ fun ShopNav() {
         composable("manage") {
             val s: ShopStore = holder.store ?: return@composable
             ShopManageScreen(s, onBack = { nav.popBackStack() })
+        }
+        composable("ads") {
+            val s: ShopStore = holder.store ?: return@composable
+            ShopAdsScreen(s, onBack = { nav.popBackStack() })
         }
         composable("loyalty") {
             val s: ShopStore = holder.store ?: return@composable

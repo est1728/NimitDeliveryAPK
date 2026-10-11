@@ -72,7 +72,7 @@ import kotlinx.coroutines.launch
 private val SHOP_GRAD = Brush.linearGradient(listOf(C.Primary, C.PrimaryDark))
 
 @Composable
-fun ShopHome(store: ShopStore, onOpenOrder: (String) -> Unit, onReviews: () -> Unit, onLoyalty: () -> Unit, onEditInfo: () -> Unit, onLogout: () -> Unit) {
+fun ShopHome(store: ShopStore, onOpenOrder: (String) -> Unit, onReviews: () -> Unit, onLoyalty: () -> Unit, onEditInfo: () -> Unit, onAds: () -> Unit, onLogout: () -> Unit) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     val shop: Map<String, Any> = store.shop.value
@@ -181,6 +181,7 @@ fun ShopHome(store: ShopStore, onOpenOrder: (String) -> Unit, onReviews: () -> U
             onClose = { sidebar = false },
             onSoon = { shopToast(ctx, "ฟีเจอร์นี้กำลังจะมาในอัปเดตถัดไป") },
             onEdit = { sidebar = false; onEditInfo() },
+            onAds = { sidebar = false; onAds() },
             onShare = {
                 val slug: String = shop["slug"]?.toString().takeIf { !it.isNullOrEmpty() } ?: store.shopId
                 val link = "https://nimitdelivery.vercel.app/menu.html?id=" + java.net.URLEncoder.encode(slug, "UTF-8") + "&openExternalBrowser=1"
@@ -307,7 +308,7 @@ private fun ShopHistoryCard(o: ShopOrd, onClick: () -> Unit) {
 @Composable
 private fun ShopSidebar(
     visible: Boolean, name: String, sub: String, avatar: String, loyaltyOn: Boolean,
-    onClose: () -> Unit, onSoon: () -> Unit, onEdit: () -> Unit, onShare: () -> Unit, onReviews: () -> Unit, onLoyalty: () -> Unit, onLogout: () -> Unit
+    onClose: () -> Unit, onSoon: () -> Unit, onEdit: () -> Unit, onAds: () -> Unit, onShare: () -> Unit, onReviews: () -> Unit, onLoyalty: () -> Unit, onLogout: () -> Unit
 ) {
     AnimatedVisibility(visible, enter = fadeIn(tween(200)), exit = fadeOut(tween(200))) {
         Box(Modifier.fillMaxSize().background(Color(0x66000000)).clickable(indication = null, interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }) { onClose() })
@@ -328,7 +329,7 @@ private fun ShopSidebar(
                 }
                 ShopSideItem(ShopP.EDIT, "แก้ไขข้อมูลร้าน", "ชื่อ เบอร์ เวลา ที่อยู่", null) { onEdit() }
                 ShopSideItem(ShopP.SHARE, "แชร์ลิงก์เมนู", "คัดลอกลิงก์ให้ลูกค้าสั่งได้ตรงร้านนี้เลย", null) { onShare() }
-                ShopSideItem(ShopP.IMAGE, "โฆษณา", "เพิ่มและจัดการโฆษณา", null) { onSoon() }
+                ShopSideItem(ShopP.IMAGE, "โฆษณา", "เพิ่มและจัดการโฆษณา", null) { onAds() }
                 ShopSideItem(P.STAR, "รีวิวร้านของฉัน", "คะแนนดาวและความคิดเห็น", null) { onReviews() }
                 Row(Modifier.fillMaxWidth().clickable { onLoyalty() }.padding(horizontal = 20.dp, vertical = 16.dp), verticalAlignment = Alignment.CenterVertically) {
                     PathIcon(P.TAG, C.Subtext, 20.dp)
