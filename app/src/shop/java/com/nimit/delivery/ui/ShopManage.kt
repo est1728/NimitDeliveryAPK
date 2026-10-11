@@ -38,6 +38,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
@@ -129,6 +130,11 @@ fun ShopManageScreen(store: ShopStore, onBack: () -> Unit) {
     var cdDate by remember { mutableStateOf("") }
     var cropShape by remember { mutableStateOf("") }
     var cropBmp by remember { mutableStateOf<Bitmap?>(null) }
+    var cropTarget by remember { mutableStateOf("") }
+    val ms = remember { ShopMenuState(store.shopId) }
+    DisposableEffect(Unit) { onDispose { ms.stopListen() } }
+    ms.toast = { t: String -> shopToast(ctx, t) }
+    val anyDirty: Boolean = dirty || ms.hasDirty
 
     // โหลดข้อมูลร้านครั้งเดียวตอนเข้าหน้า (เหมือน getDoc ในเว็บ)
     LaunchedEffect(store.shopId) {
@@ -169,6 +175,14 @@ fun ShopManageScreen(store: ShopStore, onBack: () -> Unit) {
                 closedDates.add(ClosedDate(m["type"]?.toString() ?: "date", (m["day"] as? Number)?.toInt() ?: 0, m["date"]?.toString() ?: ""))
             }
             inited = true
+            ms.loadGp()
+            ms.categories.clear()
+            (s["categories"] as? List<*>)?.forEach { x ->
+                val m = x as? Map<*, *>
+                if (m != null) ms.categories.add(MCat(m["id"]?.toString() ?: "", m["name"]?.toString() ?: ""))
+            }
+            ms.shopType = if (s["shopType"] == "proxy") "proxy" else "normal"
+            ms.startListen()
         }
     }
 
@@ -178,6 +192,7 @@ fun ShopManageScreen(store: ShopStore, onBack: () -> Unit) {
             if (b == null) shopToast(ctx, "เปิดรูปไม่สำเร็จ") else cropBmp = b
         }
     }
+    ms.requestImage = { id: String -> cropTarget = id; cropShape = "menu"; picker.launch("image/*") }
     val locPerm = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { m: Map<String, Boolean> ->
         if (m.values.any { it }) shopFindMe(ctx) { a, b -> lat = a; lng = b; mapMove = ShopMapMove(a, b); dirty = true }
         else shopToast(ctx, "ไม่ได้รับสิทธิ์เข้าถึงตำแหน่ง ลองปักหมุดเองบนแผนที่แทนได้ครับ")
@@ -199,15 +214,21 @@ fun ShopManageScreen(store: ShopStore, onBack: () -> Unit) {
             m
         }
         upd["updatedAt"] = FieldValue.serverTimestamp()
-        FirebaseFirestore.getInstance().collection("shops").document(store.shopId).update(upd).await()
+        ms.prepareSave()
+        try {
+            FirebaseFirestore.getInstance().collection("shops").document(store.shopId).update(upd).await()
+            ms.saveMenus()
+        } finally { ms.startListen() }
         dirty = false; openTouched = false
+        ms.finishSave()
     }
 
-    fun attemptBack() { if (dirty) showUnsaved = true else onBack() }
+    fun attemptBack() { if (anyDirty) showUnsaved = true else onBack() }
 
     BackHandler {
         when {
             cropBmp != null -> cropBmp = null
+            ms.handleBack() -> { }
             saving -> { }
             result != null -> result = null
             showConfirm -> showConfirm = false
@@ -387,6 +408,7 @@ fun ShopManageScreen(store: ShopStore, onBack: () -> Unit) {
                         contentAlignment = Alignment.Center
                     ) { Text("+ เพิ่มวันปิด", fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = C.Primary) }
                 }
+                ShopMenuSection(ms)
                 Spacer(Modifier.height(100.dp))
             }
         }
@@ -395,7 +417,7 @@ fun ShopManageScreen(store: ShopStore, onBack: () -> Unit) {
         if (showUnsaved) MSheet(null) {
             MModalTitle("ยังไม่ได้บันทึกการเปลี่ยนแปลง")
             Text("มีข้อมูลที่แก้ไขแล้วแต่ยังไม่ได้บันทึก ต้องการทำอะไรต่อ?", fontSize = 13.sp, color = C.Subtext, modifier = Modifier.padding(bottom = 16.dp))
-            MBtn("ออกเลย", ShopRedLight, ShopRed, FontWeight.Bold) { dirty = false; showUnsaved = false; onBack() }
+            MBtn("ออกเลย", ShopRedLight, ShopRed, FontWeight.Bold) { dirty = false; ms.clearDirty(); showUnsaved = false; onBack() }
             MBtn("แก้ไขต่อ", C.Gray, C.Text, FontWeight.Bold, top = 8.dp) { showUnsaved = false }
             MBtn("บันทึก", null, Color.White, FontWeight.ExtraBold, top = 8.dp) {
                 scope.launch {
@@ -494,6 +516,8 @@ fun ShopManageScreen(store: ShopStore, onBack: () -> Unit) {
             MBtn("ยกเลิก", C.Gray, C.Text, FontWeight.Bold, top = 8.dp) { showCd = false }
         }
 
+        ShopMenuOverlays(ms)
+
         val bmp: Bitmap? = cropBmp
         if (bmp != null) {
             ShopCropOverlay(
@@ -501,8 +525,13 @@ fun ShopManageScreen(store: ShopStore, onBack: () -> Unit) {
                 ratio = if (cropShape == "banner") screenW / 130f else 1f,
                 onCancel = { cropBmp = null },
                 onDone = { url: String ->
-                    if (cropShape == "banner") bannerInput = url else avatarInput = url
-                    dirty = true
+                    if (cropShape == "menu") {
+                        val mm = ms.menuById(cropTarget)
+                        if (mm != null) { mm.imgUrl = url; ms.markDirty(mm.id) }
+                    } else {
+                        if (cropShape == "banner") bannerInput = url else avatarInput = url
+                        dirty = true
+                    }
                     cropBmp = null
                 }
             )
@@ -538,7 +567,7 @@ private fun shopFindMe(ctx: android.content.Context, onFound: (Double, Double) -
     }
 }
 
-private fun shopPickTime(ctx: android.content.Context, cur: String, onPick: (String) -> Unit) {
+internal fun shopPickTime(ctx: android.content.Context, cur: String, onPick: (String) -> Unit) {
     val p: List<String> = cur.split(":")
     val h: Int = p.getOrNull(0)?.toIntOrNull() ?: 8
     val m: Int = p.getOrNull(1)?.toIntOrNull() ?: 0
@@ -636,13 +665,13 @@ private fun MPreview(url: String, square: Boolean, onClick: () -> Unit) {
 }
 
 @Composable
-private fun MModalTitle(t: String) {
+internal fun MModalTitle(t: String) {
     Text(t, fontSize = 17.sp, fontWeight = FontWeight.ExtraBold, color = C.Text, modifier = Modifier.padding(bottom = 14.dp))
 }
 
 /** ปุ่มในป๊อบอัพ: bg == null คือปุ่มไล่สีหลัก (modal-save-btn) */
 @Composable
-private fun MBtn(text: String, bg: Color?, fg: Color, weight: FontWeight, top: Dp = 0.dp, onClick: () -> Unit) {
+internal fun MBtn(text: String, bg: Color?, fg: Color, weight: FontWeight, top: Dp = 0.dp, onClick: () -> Unit) {
     val base = Modifier.fillMaxWidth().padding(top = top).height(50.dp).clip(RoundedCornerShape(12.dp))
     Box(
         (if (bg == null) base.background(MGrad) else base.background(bg)).clickable { onClick() },
@@ -652,7 +681,7 @@ private fun MBtn(text: String, bg: Color?, fg: Color, weight: FontWeight, top: D
 
 /** ป๊อบอัพแบบแผ่นเลื่อนขึ้นจากด้านล่าง (modal-overlay + modal) onDismiss = null คือแตะข้างนอกแล้วไม่ปิด */
 @Composable
-private fun MSheet(onDismiss: (() -> Unit)?, content: @Composable ColumnScope.() -> Unit) {
+internal fun MSheet(onDismiss: (() -> Unit)?, content: @Composable ColumnScope.() -> Unit) {
     val maxH: Dp = (LocalConfiguration.current.screenHeightDp * 0.8f).dp
     val none = remember { MutableInteractionSource() }
     Box(

@@ -133,7 +133,8 @@ fun ShopCropOverlay(bitmap: Bitmap, shape: String, ratio: Float, onCancel: () ->
     val ctx = LocalContext.current
     val density = LocalDensity.current
     val scope = rememberCoroutineScope()
-    val isCircle: Boolean = shape == "circle"
+    val isMenu: Boolean = shape == "menu"
+    val isCircle: Boolean = shape == "circle" || isMenu
     val r: Float = if (isCircle) 1f else ratio
 
     val cw: Float = with(density) { 320.dp.toPx() }
@@ -165,7 +166,7 @@ fun ShopCropOverlay(bitmap: Bitmap, shape: String, ratio: Float, onCancel: () ->
     var sfh by remember { mutableFloatStateOf(0f) }
     val hit: Float = with(density) { 28.dp.toPx() }
     val minW: Float = with(density) { 60.dp.toPx() }
-    val rad: Float = if (isCircle) fw * 0.22f else 0f
+    val rad: Float = if (isCircle && !isMenu) fw * 0.22f else 0f
 
     Box(
         Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.85f))
@@ -173,7 +174,7 @@ fun ShopCropOverlay(bitmap: Bitmap, shape: String, ratio: Float, onCancel: () ->
         contentAlignment = Alignment.Center
     ) {
         Column(Modifier.padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(if (isCircle) "ปรับรูปโปรไฟล์ร้าน" else "ปรับรูปแบนเนอร์", fontSize = 16.sp, fontWeight = FontWeight.ExtraBold, color = Color.White, modifier = Modifier.padding(bottom = 6.dp))
+            Text(if (isMenu) "ปรับรูปเมนู" else if (isCircle) "ปรับรูปโปรไฟล์ร้าน" else "ปรับรูปแบนเนอร์", fontSize = 16.sp, fontWeight = FontWeight.ExtraBold, color = Color.White, modifier = Modifier.padding(bottom = 6.dp))
             Text("ลากเพื่อย้าย · ลากมุมเพื่อปรับขนาด", fontSize = 12.sp, color = Color.White.copy(alpha = 0.6f), textAlign = TextAlign.Center, modifier = Modifier.padding(bottom = 16.dp))
             Box(
                 Modifier.width(320.dp).height(with(density) { ch.toDp() }).clip(RoundedCornerShape(8.dp)).background(Color.Black)
