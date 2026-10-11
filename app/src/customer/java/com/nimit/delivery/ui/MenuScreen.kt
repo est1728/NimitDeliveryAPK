@@ -240,8 +240,8 @@ fun MenuScreen(session: Session, shopIdArg: String, onBack: () -> Unit, onCart: 
                 Modifier.align(Alignment.BottomCenter).fillMaxWidth().navigationBarsPadding()
                     .padding(start = 16.dp, end = 16.dp, bottom = 16.dp)
                     .shadow(14.dp, barShape, ambientColor = PRIMARY.copy(alpha = 0.45f), spotColor = PRIMARY.copy(alpha = 0.45f))
-                    .clip(barShape).background(Brush.linearGradient(listOf(PRIMARY, PRIMARY_DARK)))
-                    .clickable { goCheckout() }.padding(horizontal = 16.dp, vertical = 12.dp),
+                    .clip(barShape).background(if (open) Brush.linearGradient(listOf(PRIMARY, PRIMARY_DARK)) else Brush.linearGradient(listOf(Color(0xFF94A3B8), Color(0xFF94A3B8))))
+                    .clickable { if (open) goCheckout() else Toast.makeText(ctx, "ร้านปิดอยู่ตอนนี้ สั่งซื้อไม่ได้", Toast.LENGTH_SHORT).show() }.padding(horizontal = 16.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Box(Modifier.size(38.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.18f)), contentAlignment = Alignment.Center) { PathIcon(CART_PATH, Color.White, 20.dp) }
@@ -250,7 +250,7 @@ fun MenuScreen(session: Session, shopIdArg: String, onBack: () -> Unit, onCart: 
                     Text("$shopQty รายการ", fontSize = 12.sp, color = Color.White.copy(alpha = 0.85f))
                     Text("฿${fmtNum(shopTotal)}", fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = Color.White)
                 }
-                Text("สรุปคำสั่งซื้อ", fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, color = Color.White)
+                Text(if (open) "สรุปคำสั่งซื้อ" else "ร้านปิดอยู่", fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, color = Color.White)
                 PathIcon(P.CHEVRON, Color.White, 24.dp)
             }
         }

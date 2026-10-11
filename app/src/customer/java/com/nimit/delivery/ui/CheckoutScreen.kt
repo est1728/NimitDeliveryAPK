@@ -1,5 +1,6 @@
 package com.nimit.delivery.ui
 
+import android.widget.Toast
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -212,6 +213,8 @@ fun CheckoutScreen(session: Session, onBack: () -> Unit, onAddress: () -> Unit, 
 
     fun place() {
         val a = addr ?: return
+        val closedShop = shopIds.firstOrNull { id -> meta[id]?.let { d -> !computeShopOpenNow(d) } == true }
+        if (closedShop != null) { Toast.makeText(ctx, "ร้าน ${cart.optJSONObject(closedShop)?.optString("shopName").orEmpty()} ปิดอยู่ตอนนี้ สั่งซื้อไม่ได้", Toast.LENGTH_LONG).show(); return }
         placing = true; error = null
         scope.launch {
             try {
