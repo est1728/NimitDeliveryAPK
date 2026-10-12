@@ -178,18 +178,19 @@ object ShopAlert {
     private var nextRun: Runnable? = null
     const val NIMIT = "nimit"
 
-    /** "" = เสียงแจ้งเตือนเริ่มต้นของเครื่อง, "nimit" = เสียงสังเคราะห์ของแอพ, อื่นๆ = uri ที่เลือก */
+    /** "" หรือ "nimit" = เสียง Nimit (ไฟล์ในแอพ ค่าเริ่มต้น), "system" = เสียงแจ้งเตือนเริ่มต้นของเครื่อง, อื่นๆ = uri ที่เลือก */
     fun soundPref(ctx: Context): String = prefs(ctx).getString("alertUri", "") ?: ""
     fun setSoundPref(ctx: Context, v: String) { prefs(ctx).edit().putString("alertUri", v).apply() }
+    fun isNimitSound(ctx: Context): Boolean { val v: String = soundPref(ctx); return v.isEmpty() || v == NIMIT }
     private fun realUri(ctx: Context): Uri? {
         val v: String = soundPref(ctx)
-        if (v == NIMIT) return null
-        return if (v.isEmpty()) RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION) else Uri.parse(v)
+        if (v.isEmpty() || v == NIMIT) return Uri.parse("android.resource://" + ctx.applicationContext.packageName + "/" + R.raw.nimit_order_chime)
+        return if (v == "system") RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION) else Uri.parse(v)
     }
     fun soundTitle(ctx: Context): String {
         val v: String = soundPref(ctx)
-        if (v == NIMIT) return "เสียงมาตรฐานของแอพ"
-        if (v.isEmpty()) return "เสียงแจ้งเตือนเริ่มต้นของเครื่อง"
+        if (v.isEmpty() || v == NIMIT) return "เสียง Nimit (ค่าเริ่มต้น)"
+        if (v == "system") return "เสียงแจ้งเตือนเริ่มต้นของเครื่อง"
         return try { RingtoneManager.getRingtone(ctx.applicationContext, Uri.parse(v))?.getTitle(ctx) ?: "เสียงที่เลือก" } catch (e: Exception) { "เสียงที่เลือก" }
     }
 
@@ -217,7 +218,7 @@ object ShopAlert {
             release(m)
             val r = Runnable { playNext(ctx, u) }
             nextRun = r
-            main.postDelayed(r, 1200)   // เว้นช่วงสั้นๆ ระหว่างรอบ เสียงไม่ซ้อนกัน
+            main.postDelayed(r, if (u.scheme == "android.resource") 700L else 1200L)   // เว้นช่วงสั้นๆ ระหว่างรอบ เสียงไม่ซ้อนกัน
         }
         p.start()
     }
@@ -376,7 +377,7 @@ fun ShopVolumeControl() {
         if (r.resultCode == android.app.Activity.RESULT_OK && d != null) {
             val u: Uri? = if (Build.VERSION.SDK_INT >= 33) d.getParcelableExtra(RingtoneManager.EXTRA_RINGTONE_PICKED_URI, Uri::class.java)
                 else @Suppress("DEPRECATION") d.getParcelableExtra(RingtoneManager.EXTRA_RINGTONE_PICKED_URI)
-            ShopAlert.setSoundPref(ctx, if (u == null) ShopAlert.NIMIT else u.toString())
+            ShopAlert.setSoundPref(ctx, if (u == null) ShopAlert.NIMIT else if (u == RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)) "system" else u.toString())
             soundName = ShopAlert.soundTitle(ctx)
             runTest()
         }
@@ -412,12 +413,15 @@ fun ShopVolumeControl() {
                 i.putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_DEFAULT, true)
                 i.putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_SILENT, false)
                 val cur: String = ShopAlert.soundPref(ctx)
-                if (cur.isNotEmpty() && cur != ShopAlert.NIMIT) i.putExtra(RingtoneManager.EXTRA_RINGTONE_EXISTING_URI, Uri.parse(cur))
+                if (cur.isNotEmpty() && cur != ShopAlert.NIMIT && cur != "system") i.putExtra(RingtoneManager.EXTRA_RINGTONE_EXISTING_URI, Uri.parse(cur))
                 picker.launch(i)
             }, contentAlignment = Alignment.Center) {
                 Text("เลือกเสียง", fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = Color.White)
             }
         }
-        Text("เสียงที่ใช้: " + soundName, fontSize = 12.sp, color = C.Subtext, maxLines = 1, modifier = Modifier.padding(top = 6.dp))
+        Row(Modifier.padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("เสียงที่ใช้: " + soundName, fontSize = 12.sp, color = C.Subtext, maxLines = 1, modifier = Modifier.weight(1f))
+            if (!ShopAlert.isNimitSound(ctx)) Text("ใช้เสียง Nimit", fontSize = 12.sp, fontWeight = FontWeight.ExtraBold, color = C.Primary, modifier = Modifier.clickable { ShopAlert.setSoundPref(ctx, ShopAlert.NIMIT); soundName = ShopAlert.soundTitle(ctx); runTest() }.padding(start = 8.dp))
+        }
     }
 }
