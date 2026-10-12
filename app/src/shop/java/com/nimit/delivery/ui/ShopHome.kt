@@ -343,6 +343,8 @@ private fun ShopSidebar(
                     ShopSwitch(loyaltyOn, C.Primary, Color(0xFFCBD5E1), 40.dp, 22.dp) { onLoyalty() }
                 }
                 HorizontalDivider(color = C.Gray)
+                ShopReadyCard()
+                HorizontalDivider(color = C.Gray)
                 ShopVolumeControl()
                 HorizontalDivider(color = C.Gray)
                 ShopSideItem(ShopP.LOGOUT, "ออกจากระบบ", "", ShopRed) { onLogout() }

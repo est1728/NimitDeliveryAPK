@@ -57,7 +57,10 @@ fun ShopNav() {
     }
 
     // เปิดบริการฟังออเดอร์เบื้องหน้า (เสียงเตือนวนซ้ำแม้ปิดหน้าจอ) เมื่อล็อกอินอยู่ / หยุดเมื่อออกจากระบบ
-    val notifPerm = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { _: Boolean -> ShopAlertService.start(ctx) }
+    val notifPerm = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { _: Boolean ->
+        ctx.getSharedPreferences("nimit_shop", android.content.Context.MODE_PRIVATE).edit().putBoolean("notifAsked", true).apply()
+        ShopAlertService.start(ctx)
+    }
     LaunchedEffect(cur?.shopId) {
         if (cur != null) {
             val need: Boolean = android.os.Build.VERSION.SDK_INT >= 33 &&
@@ -81,6 +84,7 @@ fun ShopNav() {
     }
 
     UpdatePrompt(appName = "Nimit Shop", tagPrefix = "shop-build-")
+    if (cur != null) ShopReadyGate()
 
     // เปลี่ยนหน้า: เลื่อน + จาง ประมาณ 200ms
     NavHost(
