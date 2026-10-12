@@ -11,10 +11,15 @@ import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioManager
 import android.media.AudioTrack
+import android.media.MediaPlayer
+import android.media.RingtoneManager
+import android.net.Uri
 import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
@@ -111,6 +116,7 @@ object ShopAlert {
         prefs(ctx).edit().putInt("alertVol", v.coerceIn(0, 100)).apply()
         val v2: Float = v.coerceIn(0, 100) / 100f
         try { loop?.setVolume(v2) } catch (e: Exception) { }
+        try { mpLoop?.setVolume(v2, v2) } catch (e: Exception) { }
     }
 
     private fun boost(ctx: Context) {
@@ -132,7 +138,7 @@ object ShopAlert {
         return t
     }
 
-    fun startLoop(ctx: Context) {
+    private fun startSynth(ctx: Context) {
         if (loop != null) return
         try {
             boost(ctx)
@@ -143,14 +149,14 @@ object ShopAlert {
         } catch (e: Exception) { loop = null }
     }
 
-    fun stopLoop() {
+    private fun stopSynth() {
         val t: AudioTrack? = loop
         loop = null
         if (t != null) { try { t.stop() } catch (e: Exception) { }; try { t.release() } catch (e: Exception) { } }
     }
 
     /** เล่นทดลอง 1 รอบด้วยความดังที่ตั้งไว้ */
-    fun test(ctx: Context) {
+    private fun testSynth(ctx: Context) {
         try {
             val old: AudioTrack? = test
             test = null
@@ -163,6 +169,93 @@ object ShopAlert {
                 if (test === t) { test = null; try { t.stop() } catch (e: Exception) { }; try { t.release() } catch (e: Exception) { } }
             }, (pcm.size * 1000L / SR) + 200)
         } catch (e: Exception) { }
+    }
+
+    // ---------- เสียงจากเครื่อง (เลือกได้จากรายการเสียงของมือถือ) ----------
+    private var looping = false
+    private var mpLoop: MediaPlayer? = null
+    private var mpTest: MediaPlayer? = null
+    private var nextRun: Runnable? = null
+    const val NIMIT = "nimit"
+
+    /** "" = เสียงแจ้งเตือนเริ่มต้นของเครื่อง, "nimit" = เสียงสังเคราะห์ของแอพ, อื่นๆ = uri ที่เลือก */
+    fun soundPref(ctx: Context): String = prefs(ctx).getString("alertUri", "") ?: ""
+    fun setSoundPref(ctx: Context, v: String) { prefs(ctx).edit().putString("alertUri", v).apply() }
+    private fun realUri(ctx: Context): Uri? {
+        val v: String = soundPref(ctx)
+        if (v == NIMIT) return null
+        return if (v.isEmpty()) RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION) else Uri.parse(v)
+    }
+    fun soundTitle(ctx: Context): String {
+        val v: String = soundPref(ctx)
+        if (v == NIMIT) return "เสียงมาตรฐานของแอพ"
+        if (v.isEmpty()) return "เสียงแจ้งเตือนเริ่มต้นของเครื่อง"
+        return try { RingtoneManager.getRingtone(ctx.applicationContext, Uri.parse(v))?.getTitle(ctx) ?: "เสียงที่เลือก" } catch (e: Exception) { "เสียงที่เลือก" }
+    }
+
+    private fun player(ctx: Context, u: Uri): MediaPlayer? {
+        return try {
+            val p = MediaPlayer()
+            p.setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ALARM).setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build())
+            p.setDataSource(ctx.applicationContext, u)
+            val v: Float = volume(ctx) / 100f
+            p.setVolume(v, v)
+            p.prepare()
+            p
+        } catch (e: Exception) { null }
+    }
+
+    private fun release(p: MediaPlayer?) { if (p != null) { try { p.stop() } catch (e: Exception) { }; try { p.release() } catch (e: Exception) { } } }
+
+    private fun playNext(ctx: Context, u: Uri) {
+        if (!looping) return
+        val p: MediaPlayer? = player(ctx, u)
+        if (p == null) { startSynth(ctx); return }   // เปิดไฟล์เสียงไม่ได้ ใช้เสียงมาตรฐานแทน
+        mpLoop = p
+        p.setOnCompletionListener { m: MediaPlayer ->
+            if (mpLoop === m) mpLoop = null
+            release(m)
+            val r = Runnable { playNext(ctx, u) }
+            nextRun = r
+            main.postDelayed(r, 1200)   // เว้นช่วงสั้นๆ ระหว่างรอบ เสียงไม่ซ้อนกัน
+        }
+        p.start()
+    }
+
+    /** เริ่มเสียงเตือนวน (ถ้าเริ่มอยู่แล้วไม่เริ่มซ้ำ จึงไม่มีเสียงซ้อนกัน) */
+    fun startLoop(ctx: Context) {
+        if (looping) return
+        looping = true
+        boost(ctx)
+        val u: Uri? = realUri(ctx)
+        if (u == null) startSynth(ctx) else playNext(ctx.applicationContext, u)
+    }
+
+    fun stopLoop() {
+        looping = false
+        val r: Runnable? = nextRun
+        if (r != null) main.removeCallbacks(r)
+        nextRun = null
+        val p: MediaPlayer? = mpLoop
+        mpLoop = null
+        release(p)
+        stopSynth()
+    }
+
+    /** เล่นทดลอง 1 รอบด้วยเสียงและความดังที่ตั้งไว้ */
+    fun test(ctx: Context) {
+        val old: MediaPlayer? = mpTest
+        mpTest = null
+        release(old)
+        val u: Uri? = realUri(ctx)
+        if (u == null) { testSynth(ctx); return }
+        boost(ctx)
+        val p: MediaPlayer? = player(ctx, u)
+        if (p == null) { testSynth(ctx); return }
+        mpTest = p
+        p.setOnCompletionListener { m: MediaPlayer -> if (mpTest === m) mpTest = null; release(m) }
+        p.start()
+        main.postDelayed({ if (mpTest === p) { mpTest = null; release(p) } }, 6000)
     }
 
     // เข้าหน้ารายละเอียดออเดอร์ = รับทราบ (เสียงหยุด) ถ้ามีออเดอร์ใหม่เข้าขณะอยู่หน้านี้ เสียงจะดังจนกว่าจะย้อนกลับ
@@ -277,6 +370,17 @@ fun ShopVolumeControl() {
     val pulse: Float by rememberInfiniteTransition(label = "pulse").animateFloat(1f, 1.22f, infiniteRepeatable(tween(320), RepeatMode.Reverse), label = "pl")
     LaunchedEffect(playing) { if (playing) { kotlinx.coroutines.delay(1900); playing = false } }
     fun runTest() { ShopAlert.test(ctx); playing = true }
+    var soundName by remember { mutableStateOf(ShopAlert.soundTitle(ctx)) }
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { r ->
+        val d: Intent? = r.data
+        if (r.resultCode == android.app.Activity.RESULT_OK && d != null) {
+            val u: Uri? = if (Build.VERSION.SDK_INT >= 33) d.getParcelableExtra(RingtoneManager.EXTRA_RINGTONE_PICKED_URI, Uri::class.java)
+                else @Suppress("DEPRECATION") d.getParcelableExtra(RingtoneManager.EXTRA_RINGTONE_PICKED_URI)
+            ShopAlert.setSoundPref(ctx, if (u == null) ShopAlert.NIMIT else u.toString())
+            soundName = ShopAlert.soundTitle(ctx)
+            runTest()
+        }
+    }
 
     Column(Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 14.dp, bottom = 10.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -297,8 +401,23 @@ fun ShopVolumeControl() {
             onValueChangeFinished = { runTest() }, valueRange = 0f..100f,
             colors = SliderDefaults.colors(thumbColor = C.Primary, activeTrackColor = C.Primary, inactiveTrackColor = Color(0xFFE2E8F0))
         )
-        Box(Modifier.fillMaxWidth().height(36.dp).clip(RoundedCornerShape(10.dp)).background(C.PrimaryLight).clickable { runTest() }, contentAlignment = Alignment.Center) {
-            Text(if (playing) "กำลังเล่นเสียง..." else "ทดลองเสียง", fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = C.Primary)
+        Row(horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)) {
+            Box(Modifier.weight(1f).height(36.dp).clip(RoundedCornerShape(10.dp)).background(C.PrimaryLight).clickable { runTest() }, contentAlignment = Alignment.Center) {
+                Text(if (playing) "กำลังเล่น..." else "ทดลองเสียง", fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = C.Primary)
+            }
+            Box(Modifier.weight(1f).height(36.dp).clip(RoundedCornerShape(10.dp)).background(C.Primary).clickable {
+                val i = Intent(RingtoneManager.ACTION_RINGTONE_PICKER)
+                i.putExtra(RingtoneManager.EXTRA_RINGTONE_TYPE, RingtoneManager.TYPE_ALL)
+                i.putExtra(RingtoneManager.EXTRA_RINGTONE_TITLE, "เลือกเสียงเตือนออเดอร์")
+                i.putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_DEFAULT, true)
+                i.putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_SILENT, false)
+                val cur: String = ShopAlert.soundPref(ctx)
+                if (cur.isNotEmpty() && cur != ShopAlert.NIMIT) i.putExtra(RingtoneManager.EXTRA_RINGTONE_EXISTING_URI, Uri.parse(cur))
+                picker.launch(i)
+            }, contentAlignment = Alignment.Center) {
+                Text("เลือกเสียง", fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = Color.White)
+            }
         }
+        Text("เสียงที่ใช้: " + soundName, fontSize = 12.sp, color = C.Subtext, maxLines = 1, modifier = Modifier.padding(top = 6.dp))
     }
 }
