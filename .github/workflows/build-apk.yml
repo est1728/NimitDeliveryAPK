@@ -50,3 +50,10 @@ jobs:
         run: |
           cp app/build/outputs/apk/shop/release/*.apk NimitShop-build-${{ github.run_number }}.apk
           gh release create "shop-build-${{ github.run_number }}" NimitShop-build-${{ github.run_number }}.apk --repo est1728/NimitDelivery-releases --title "Shop ${{ github.run_number }}" --notes "shop test" --prerelease
+      - run: gradle assembleDeveloperRelease --no-daemon
+      - name: Publish developer
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+        run: |
+          cp app/build/outputs/apk/developer/release/*.apk NimitDeveloper-build-${{ github.run_number }}.apk
+          gh release create "developer-build-${{ github.run_number }}" NimitDeveloper-build-${{ github.run_number }}.apk --repo est1728/NimitDelivery-releases --title "Developer ${{ github.run_number }}" --notes "developer test" --prerelease

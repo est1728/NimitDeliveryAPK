@@ -21,6 +21,7 @@ android {
         create("admin") { dimension = "app"; applicationId = "com.nimit.delivery.admin" }
         create("shop") { dimension = "app"; applicationId = "com.nimit.delivery.shop" }
         create("rider") { dimension = "app"; applicationId = "com.nimit.delivery.rider" }
+        create("developer") { dimension = "app"; applicationId = "com.nimit.delivery.developer" }
     }
     signingConfigs {
         create("nimit") {
