@@ -104,7 +104,7 @@ fun MenuScreen(session: Session, shopIdArg: String, onBack: () -> Unit, onCart: 
         val want = pf.getString("openItem", null)
         if (want != null && menus.isNotEmpty()) {
             pf.edit().remove("openItem").apply()
-            menus.firstOrNull { it.first == want }?.let { (mid, mm) -> popup = PopupState(mid, mm) }
+            menus.firstOrNull { it.first == (want.split("|").let { p -> if (p.size == 3) p[1] else want }) }?.let { (mid, mm) -> popup = PopupState(mid, mm) }
         }
     }
 
