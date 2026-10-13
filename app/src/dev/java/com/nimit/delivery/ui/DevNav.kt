@@ -24,6 +24,7 @@ import androidx.compose.material3.NavigationDrawerItemDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -35,7 +36,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
@@ -86,10 +89,12 @@ fun DevNav() {
         )
     }
 
+    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
     ModalNavigationDrawer(
         drawerState = drawer,
         drawerContent = {
             ModalDrawerSheet(drawerContainerColor = Color.White, modifier = Modifier.width(290.dp)) {
+                CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
                 Column(
                     Modifier
                         .fillMaxWidth()
@@ -108,9 +113,11 @@ fun DevNav() {
                     devTools.forEach { item(it) }
                     Box(Modifier.padding(top = 8.dp)) { item(devSettings) }
                 }
+                }
             }
         }
     ) {
+        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
         Column(Modifier.fillMaxSize().background(DevC.G)) {
             // bar: ถอดจาก .bar ใน developer.html
             Row(
@@ -121,18 +128,6 @@ fun DevNav() {
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Box(
-                    Modifier
-                        .size(34.dp)
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(Color.White.copy(alpha = .18f))
-                        .clickable { scope.launch { drawer.open() } },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        repeat(3) { Box(Modifier.width(16.dp).height(2.dp).background(Color.White)) }
-                    }
-                }
                 Text(
                     curPage.title, color = Color.White, fontSize = 16.sp,
                     fontWeight = FontWeight.ExtraBold, modifier = Modifier.weight(1f)
@@ -146,6 +141,18 @@ fun DevNav() {
                         .padding(horizontal = 12.dp),
                     contentAlignment = Alignment.Center
                 ) { Text("ออก", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
+                Box(
+                    Modifier
+                        .size(34.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(Color.White.copy(alpha = .18f))
+                        .clickable { scope.launch { drawer.open() } },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        repeat(3) { Box(Modifier.width(16.dp).height(2.dp).background(Color.White)) }
+                    }
+                }
             }
             Column(
                 Modifier
@@ -160,6 +167,8 @@ fun DevNav() {
                 }
             }
         }
+        }
+    }
     }
 }
 
