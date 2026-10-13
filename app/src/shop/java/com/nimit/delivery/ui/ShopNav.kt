@@ -74,10 +74,7 @@ fun ShopNav() {
         val s: ShopStore? = cur
         if (s != null) {
             while (true) {
-                val shop: Map<String, Any> = s.shop.value
-                if (s.shopLoaded.value && shop["isOpen"] == false && shopEffectiveOpen(shop)) {
-                    try { ShopApi.openShop(s.shopId) } catch (e: Exception) { }
-                }
+                ShopApi.autoReopenIfDue(s)
                 delay(30_000)
             }
         }

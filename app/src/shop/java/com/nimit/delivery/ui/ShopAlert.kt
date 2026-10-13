@@ -309,6 +309,12 @@ class ShopAlertService : Service() {
                     delay(700)
                 }
             }
+            sc.launch {
+                while (isActive) {
+                    ShopApi.autoReopenIfDue(s)
+                    delay(30_000)
+                }
+            }
         }
         return START_STICKY
     }

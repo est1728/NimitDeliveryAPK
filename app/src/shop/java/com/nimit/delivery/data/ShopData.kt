@@ -5,6 +5,7 @@ import androidx.compose.runtime.mutableStateOf
 import com.google.firebase.Timestamp
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
+import com.google.firebase.firestore.SetOptions
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
 import kotlinx.coroutines.tasks.await
@@ -64,7 +65,7 @@ fun shopAsList(a: Any?): List<Any?> {
 }
 
 /** ตัวเลขแบบไม่มี .0 ถ้าเป็นจำนวนเต็ม */
-fun shopNum(n: Double): String = if (n % 1.0 == 0.0) n.toLong().toString() else n.toString()
+fun shopNum(n: Double): String = if (n.isNaN() || n.isInfinite()) "0" else if (n % 1.0 == 0.0) n.toLong().toString() else java.math.BigDecimal(n).setScale(2, java.math.RoundingMode.HALF_UP).stripTrailingZeros().toPlainString()
 
 private val SHOP_LOCALE: Locale = Locale("th", "TH")
 fun shopTime(d: Date?): String = if (d == null) "-" else SimpleDateFormat("HH:mm", SHOP_LOCALE).format(d)
@@ -225,6 +226,19 @@ object ShopApi {
     private val db: FirebaseFirestore get() = FirebaseFirestore.getInstance()
 
     /** เปิดร้าน: field ตรงกับที่แอดมินต้องเขียน (isOpen=true, ล้างเหตุผล/ประเภท/เวลา) */
+    @Volatile private var lastAutoReopen: Long = 0L
+    /** เปิดร้านอัตโนมัติเมื่อถึงเวลา — เรียกได้จากทั้งหน้าจอและเซอร์วิส มีตัวกันซ้ำทั้งโปรเซส (กัน statusLogs เบิ้ล) */
+    suspend fun autoReopenIfDue(store: ShopStore) {
+        val shop: Map<String, Any> = store.shop.value
+        if (!store.shopLoaded.value || shop["isOpen"] != false || !shopEffectiveOpen(shop)) return
+        val now: Long = System.currentTimeMillis()
+        synchronized(this) {
+            if (now - lastAutoReopen < 20_000L) return
+            lastAutoReopen = now
+        }
+        try { openShop(store.shopId) } catch (e: Exception) { lastAutoReopen = 0L }
+    }
+
     suspend fun openShop(shopId: String) {
         val upd = HashMap<String, Any?>()
         upd["isOpen"] = true; upd["closeReason"] = ""; upd["closeType"] = null; upd["closeUntil"] = null
@@ -254,27 +268,20 @@ object ShopApi {
 
     /** เพิ่มแต้มให้ลูกค้า (บัตร id = shopId_เบอร์) ถ้า lookupName จะค้นชื่อจาก customers/{เบอร์} ก่อน */
     suspend fun addPoints(shopId: String, shopName: String, phone: String, customerName: String, pts: Long, lookupName: Boolean) {
+        val ph: String = ShopRepo.normPhone(phone)
         var name: String = customerName
         if (lookupName) {
             try {
-                val c: DocumentSnapshot = db.collection("customers").document(phone).get().await()
+                val c: DocumentSnapshot = db.collection("customers").document(ph).get().await()
                 if (c.exists()) name = c.getString("name") ?: ""
             } catch (e: Exception) { }
         }
-        val ref = db.collection("loyaltyCards").document(shopId + "_" + phone)
-        val snap: DocumentSnapshot = ref.get().await()
-        if (snap.exists()) {
-            val upd = HashMap<String, Any?>()
-            upd["points"] = FieldValue.increment(pts)
-            upd["updatedAt"] = FieldValue.serverTimestamp()
-            if (name.isNotEmpty()) upd["customerName"] = name
-            ref.update(upd).await()
-        } else {
-            val m = HashMap<String, Any?>()
-            m["shopId"] = shopId; m["shopName"] = shopName; m["customerPhone"] = phone; m["customerName"] = name
-            m["points"] = pts; m["updatedAt"] = FieldValue.serverTimestamp()
-            ref.set(m).await()
-        }
+        val ref = db.collection("loyaltyCards").document(shopId + "_" + ph)
+        val m = HashMap<String, Any?>()
+        m["shopId"] = shopId; m["shopName"] = shopName; m["customerPhone"] = ph
+        if (name.isNotEmpty()) m["customerName"] = name
+        m["points"] = FieldValue.increment(pts); m["updatedAt"] = FieldValue.serverTimestamp()
+        ref.set(m, SetOptions.merge()).await()
     }
 
     suspend fun setLoyalty(shopId: String, on: Boolean, target: Int) {

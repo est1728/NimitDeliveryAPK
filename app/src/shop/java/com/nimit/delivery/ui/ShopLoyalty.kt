@@ -41,6 +41,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.google.firebase.firestore.FirebaseFirestore
 import com.nimit.delivery.data.ShopApi
+import com.nimit.delivery.data.ShopRepo
 import com.nimit.delivery.data.ShopStore
 import kotlinx.coroutines.launch
 
@@ -131,7 +132,7 @@ fun ShopLoyaltyScreen(store: ShopStore, onBack: () -> Unit) {
                     Box(Modifier.height(44.dp).clip(RoundedCornerShape(12.dp)).background(C.Primary).clickable {
                         val phone: String = addPhone.trim()
                         val pts: Long = addPts.toLongOrNull()?.takeIf { it > 0 } ?: 1L
-                        if (phone.isEmpty()) shopToast(ctx, "กรุณาใส่เบอร์โทรลูกค้า")
+                        if (ShopRepo.normPhone(phone).length != 10) shopToast(ctx, "กรุณาใส่เบอร์โทรให้ครบ 10 หลัก")
                         else scope.launch {
                             try {
                                 ShopApi.addPoints(store.shopId, shopName, phone, "", pts, true)

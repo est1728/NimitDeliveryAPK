@@ -354,8 +354,16 @@ class ShopMenuState(val shopId: String) {
     fun renameCategory(i: Int, name: String) {
         val c = categories.getOrNull(i) ?: return
         if (name.trim().isEmpty()) return
-        categories[i] = MCat(c.id, name.trim())
+        val nn: String = name.trim()
+        categories[i] = MCat(c.id, nn)
         saveCategories()
+        // ชื่อหมวดที่เก็บซ้ำในเมนู ต้องตามชื่อใหม่ด้วย
+        for (m in menus) {
+            if (m.categoryId == c.id && !m.id.startsWith("_new_") && !m.id.startsWith("_bulk_")) {
+                m.category = nn
+                db.collection("shops").document(shopId).collection("menus").document(m.id).update("category", nn)
+            }
+        }
     }
     fun deleteCategory(i: Int) {
         if (i < 0 || i >= categories.size) return
@@ -384,18 +392,20 @@ class ShopMenuState(val shopId: String) {
     }
 
     fun moveMenuOrder(m: MMenu, dir: Int) {
-        val group: List<MMenu> = menus.filter { it.categoryId == m.categoryId && !it.id.startsWith("_bulk_") }.sortedBy { it.order }
+        val group: MutableList<MMenu> = menus.filter { it.categoryId == m.categoryId && !it.id.startsWith("_bulk_") }.sortedBy { it.order }.toMutableList()
         val idx: Int = group.indexOfFirst { it.id == m.id }
         val j: Int = idx + dir
         if (idx < 0 || j < 0 || j >= group.size) return
-        val other: MMenu = group[j]
-        val tmp: Int = m.order
-        m.order = other.order; other.order = tmp
-        if (m.order == other.order) { m.order = idx; other.order = j }
-        try {
-            if (!m.id.startsWith("_new_")) db.collection("shops").document(shopId).collection("menus").document(m.id).update("order", m.order)
-            if (!other.id.startsWith("_new_")) db.collection("shops").document(shopId).collection("menus").document(other.id).update("order", other.order)
-        } catch (e: Exception) { }
+        val tmpM: MMenu = group[idx]; group[idx] = group[j]; group[j] = tmpM
+        // ปรับลำดับใหม่ทั้งกลุ่ม (กันเคส order ซ้ำ/เป็น 0 ทั้งหมดแล้วสลับไม่ขยับ)
+        group.forEachIndexed { k, x ->
+            if (x.order != k) {
+                x.order = k
+                if (!x.id.startsWith("_new_")) {
+                    db.collection("shops").document(shopId).collection("menus").document(x.id).update("order", k)
+                }
+            }
+        }
     }
 
     fun moveMenuToCategory(m: MMenu, catId: String) {
