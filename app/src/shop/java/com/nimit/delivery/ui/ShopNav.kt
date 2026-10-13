@@ -22,7 +22,6 @@ import com.nimit.delivery.data.ShopInfo
 import com.nimit.delivery.data.ShopOrd
 import com.nimit.delivery.data.ShopSession
 import com.nimit.delivery.data.ShopStore
-import com.nimit.delivery.data.shopEffectiveOpen
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import kotlinx.coroutines.delay

@@ -61,6 +61,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import com.nimit.delivery.MainActivity
 import com.nimit.delivery.R
+import com.nimit.delivery.data.ShopApi
 import com.nimit.delivery.data.ShopOrd
 import com.nimit.delivery.data.ShopSession
 import com.nimit.delivery.data.ShopStore
