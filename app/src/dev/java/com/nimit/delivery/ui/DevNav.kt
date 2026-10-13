@@ -1,6 +1,5 @@
 package com.nimit.delivery.ui
 
-import android.app.Activity
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -25,6 +24,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -35,12 +35,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.nimit.delivery.data.DevRepo
 import kotlinx.coroutines.launch
 
 private data class DevPage(val key: String, val title: String, val desc: String)
@@ -64,7 +64,28 @@ private val devSettings = DevPage("set", "ตั้งค่า", "GitHub / Gemi
 
 @Composable
 fun DevNav() {
-    val ctx = LocalContext.current
+    var gate by remember { mutableStateOf(if (DevRepo.currentEmail() != null) "checking" else "login") }
+    var email by remember { mutableStateOf(DevRepo.currentEmail() ?: "") }
+    LaunchedEffect(Unit) {
+        if (gate == "checking") {
+            gate = if (DevRepo.checkAccess() == null) "app" else "login"
+        }
+    }
+    when (gate) {
+        "app" -> DevMain(email) {
+            DevRepo.logout()
+            gate = "login"
+        }
+        "login" -> DevLoginScreen {
+            email = DevRepo.currentEmail() ?: ""
+            gate = "app"
+        }
+        else -> DevChecking()
+    }
+}
+
+@Composable
+private fun DevMain(email: String, onLogout: () -> Unit) {
     val drawer = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     var cur by remember { mutableStateOf("zones") }
@@ -128,16 +149,16 @@ fun DevNav() {
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Text(
-                    curPage.title, color = Color.White, fontSize = 16.sp,
-                    fontWeight = FontWeight.ExtraBold, modifier = Modifier.weight(1f)
-                )
+                Column(Modifier.weight(1f)) {
+                    Text(curPage.title, color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, maxLines = 1)
+                    Text(email, color = Color.White.copy(alpha = .75f), fontSize = 11.sp, maxLines = 1)
+                }
                 Box(
                     Modifier
                         .height(34.dp)
                         .clip(RoundedCornerShape(10.dp))
                         .background(Color.White.copy(alpha = .18f))
-                        .clickable { (ctx as? Activity)?.finish() }
+                        .clickable { onLogout() }
                         .padding(horizontal = 12.dp),
                     contentAlignment = Alignment.Center
                 ) { Text("ออก", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
@@ -160,7 +181,7 @@ fun DevNav() {
                     .verticalScroll(rememberScrollState())
                     .padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 40.dp)
             ) {
-                if (cur == "zones") DevZonesPage() else DevCard {
+                if (cur == "zones") DevZonesScreen() else DevCard {
                     DevSTitle(curPage.title)
                     Text(curPage.desc, fontSize = 13.sp, color = DevC.S, lineHeight = 20.sp)
                     Text("ยังไม่เปิดใช้งานในเวอร์ชันนี้", fontSize = 11.sp, color = DevC.S, modifier = Modifier.padding(top = 8.dp))
@@ -169,27 +190,5 @@ fun DevNav() {
         }
         }
     }
-    }
-}
-
-@Composable
-private fun DevZonesPage() {
-    Row(
-        Modifier.fillMaxWidth().padding(bottom = 12.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text("เขตแฟรนไชส์ทั้งหมด", fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, color = DevC.T, modifier = Modifier.weight(1f))
-        Box(
-            Modifier
-                .height(38.dp)
-                .clip(RoundedCornerShape(20.dp))
-                .background(DevC.P)
-                .padding(horizontal = 18.dp),
-            contentAlignment = Alignment.Center
-        ) { Text("+ เพิ่มเขต", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold) }
-    }
-    DevCard {
-        Text("ยังไม่มีเขต", fontSize = 13.sp, color = DevC.S)
-        Text("เพิ่มเขตหลังคุยกับผู้สมัครทางไลน์ กดการ์ดเพื่อดูตั้งค่า/หลังบ้าน และใช้ปุ่ม \"เชื่อมหลังบ้าน\" เพื่อผูกหลายเขตเข้าหลังบ้านเดียวกัน", fontSize = 11.sp, color = DevC.S, lineHeight = 17.sp, modifier = Modifier.padding(top = 6.dp))
     }
 }
