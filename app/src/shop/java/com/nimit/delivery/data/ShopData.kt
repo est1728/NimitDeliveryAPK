@@ -168,6 +168,8 @@ class ShopStore(val shopId: String) {
     val orders = mutableStateOf<List<ShopOrd>>(emptyList())
     val banner = mutableStateOf<String?>(null)
     var onNewOrder: ((ShopOrd) -> Unit)? = null
+    /** > 0 = ตอนโหลดครั้งแรก ให้ถือว่าออเดอร์ pending ที่สร้างภายในกรอบเวลานี้ (ms) เป็น "ออเดอร์ใหม่" (ใช้ตอนถูกปลุกด้วย FCM) */
+    var ringRecentMs: Long = 0L
 
     private val db: FirebaseFirestore = FirebaseFirestore.getInstance()
     private var shopReg: ListenerRegistration? = null
@@ -204,7 +206,10 @@ class ShopStore(val shopId: String) {
                 orders.value = list
                 for (o in list) {
                     if (SHOP_ACTIVE_STATUSES.contains(o.status)) {
-                        if (known.add(o.id) && ordersLoaded) onNewOrder?.invoke(o)
+                        val isNew: Boolean = known.add(o.id)
+                        val fresh: Boolean = !ordersLoaded && ringRecentMs > 0 && o.status == "pending" &&
+                            (o.created?.time ?: 0L) > System.currentTimeMillis() - ringRecentMs
+                        if (isNew && (ordersLoaded || fresh)) onNewOrder?.invoke(o)
                     }
                 }
                 ordersLoaded = true

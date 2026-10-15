@@ -292,6 +292,7 @@ class ShopAlertService : Service() {
             scope?.cancel()
             ShopAlert.unacked.clear()
             val s = ShopStore(id)
+            if (intent?.getBooleanExtra("ring", false) == true) s.ringRecentMs = 15 * 60_000L
             store = s
             s.onNewOrder = { o: ShopOrd ->
                 if (o.status == "pending") {
@@ -353,8 +354,9 @@ class ShopAlertService : Service() {
             nm.createNotificationChannel(ch)
         }
 
-        fun start(ctx: Context) {
-            try { androidx.core.content.ContextCompat.startForegroundService(ctx, Intent(ctx, ShopAlertService::class.java)) } catch (e: Exception) { }
+        /** ring = true: ถูกปลุกด้วยข้อความ FCM → ออเดอร์ pending ที่เพิ่งเข้า (ใน 15 นาที) ต้องดังด้วย */
+        fun start(ctx: Context, ring: Boolean = false) {
+            try { androidx.core.content.ContextCompat.startForegroundService(ctx, Intent(ctx, ShopAlertService::class.java).putExtra("ring", ring)) } catch (e: Exception) { }
         }
 
         fun stop(ctx: Context) {
