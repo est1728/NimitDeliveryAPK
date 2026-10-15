@@ -64,6 +64,7 @@ private val devSettings = DevPage("set", "ตั้งค่า", "GitHub / Gemi
 
 @Composable
 fun DevNav() {
+    UpdatePrompt(appName = "Nimit Developer", tagPrefix = "dev-build-")
     var gate by remember { mutableStateOf(if (DevRepo.currentEmail() != null) "checking" else "login") }
     var email by remember { mutableStateOf(DevRepo.currentEmail() ?: "") }
     LaunchedEffect(Unit) {
