@@ -99,7 +99,11 @@ fun DevNotifyScreen() {
             busy = true
             result = "กำลังส่ง..."
             resultOk = true
-            val r = DevNotify.send(tokens, title.trim(), body.trim())
+            // ทดสอบร้านค้า: ส่งแบบ new_order ทดสอบ (test:"1", orderId ขึ้นต้น TEST-) ให้แอปร้านดังโดยไม่ต้องมีออเดอร์จริง
+            val extra: Map<String, String> = if (!real && role == "shop") {
+                mapOf("type" to "new_order", "test" to "1", "orderId" to "TEST-" + (System.currentTimeMillis() % 100000))
+            } else emptyMap()
+            val r = DevNotify.send(tokens, title.trim(), body.trim(), extra)
             resultOk = r.first
             var text = "ส่งถึง " + tokens.size + " เครื่อง\n" + r.second
             if (real) {
@@ -150,6 +154,12 @@ fun DevNotifyScreen() {
                     if (r != "shop" && sc == "zone") sc = "all"
                 }
             }
+        }
+        if (!real && role == "shop") {
+            Text(
+                "ทดสอบร้านค้า: แอปร้านจะดังเหมือนออเดอร์ใหม่ประมาณ 20 วินาที ส่วนโหมดส่งจริงจะไม่ดังแบบออเดอร์",
+                fontSize = 11.sp, color = DevC.S, lineHeight = 16.sp, modifier = Modifier.padding(bottom = 12.dp)
+            )
         }
         DevNLabel("ขอบเขต")
         Row(

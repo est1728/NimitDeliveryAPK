@@ -76,7 +76,12 @@ object DevNotify {
     }
 
     /** ส่งจริงไปที่เซิร์ฟเวอร์ (แบ่งก้อนละ 500 token) คืน (สำเร็จทุกก้อนไหม, ข้อความผลลัพธ์ดิบ) */
-    suspend fun send(tokens: List<String>, title: String, body: String): Pair<Boolean, String> =
+    suspend fun send(
+        tokens: List<String>,
+        title: String,
+        body: String,
+        extra: Map<String, String> = emptyMap()
+    ): Pair<Boolean, String> =
         withContext(Dispatchers.IO) {
             var allOk = true
             val sb = StringBuilder()
@@ -94,6 +99,7 @@ object DevNotify {
                             .put("title", title)
                             .put("body", body)
                             .put("url", "/")
+                        extra.forEach { (k, v) -> payload.put(k, v) }
                         c.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
                         val code = c.responseCode
                         val stream = if (code in 200..299) c.inputStream else c.errorStream
