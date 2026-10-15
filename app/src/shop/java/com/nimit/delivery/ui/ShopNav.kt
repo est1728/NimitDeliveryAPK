@@ -110,6 +110,7 @@ fun ShopNav() {
                 onAds = { nav.navigate("ads") },
                 onLogout = {
                     session.logout()
+                    try { com.google.firebase.auth.FirebaseAuth.getInstance().signOut() } catch (e: Exception) { }
                     holder.store = null
                     nav.navigate("login") { popUpTo(0) }
                 }
