@@ -79,7 +79,6 @@ fun ShopNav() {
         }
     }
 
-    UpdatePrompt(appName = "Nimit Shop", tagPrefix = "shop-build-")
     if (cur != null) ShopReadyGate()
 
     // เปลี่ยนหน้า: เลื่อน + จาง ประมาณ 200ms
