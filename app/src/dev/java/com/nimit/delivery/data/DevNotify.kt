@@ -1,5 +1,6 @@
 package com.nimit.delivery.data
 
+import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.CancellationException
@@ -19,6 +20,12 @@ object DevNotify {
         if (t != null && t.isNotBlank()) set.add(t)
     }
 
+    // เอกสาร fcmTokens ของร้านเก็บ tokens[] (ทุกเครื่อง) + token (ล่าสุด): เก็บทั้งสองอย่าง
+    private fun addDoc(set: MutableSet<String>, d: DocumentSnapshot) {
+        addToken(set, d.getString("token"))
+        (d.get("tokens") as? List<*>)?.forEach { addToken(set, it as? String) }
+    }
+
     /** หา token ผู้รับ: role = shop|admin|rider|customer, scope = all|zone|one. คืน (tokens, ข้อความผิดพลาด) */
     suspend fun resolve(role: String, scope: String, zoneId: String, person: String): Pair<List<String>, String?> {
         try {
@@ -27,7 +34,7 @@ object DevNotify {
             when (scope) {
                 "all" -> {
                     db.collection("fcmTokens").whereEqualTo("role", role).get().await().documents
-                        .forEach { d -> addToken(tokens, d.getString("token")) }
+                        .forEach { d -> addDoc(tokens, d) }
                 }
                 "zone" -> {
                     val ids = LinkedHashSet<String>()
@@ -39,7 +46,7 @@ object DevNotify {
                     ids.toList().chunked(10).forEach { chunk ->
                         db.collection("fcmTokens").whereIn("shopId", chunk).get().await().documents
                             .filter { it.getString("role") == "shop" }
-                            .forEach { d -> addToken(tokens, d.getString("token")) }
+                            .forEach { d -> addDoc(tokens, d) }
                     }
                 }
                 else -> {
@@ -53,7 +60,7 @@ object DevNotify {
                     keys.add(p + "_" + role)
                     for (k in keys) {
                         val d = db.collection("fcmTokens").document(k).get().await()
-                        addToken(tokens, d.getString("token"))
+                        addDoc(tokens, d)
                     }
                 }
             }
