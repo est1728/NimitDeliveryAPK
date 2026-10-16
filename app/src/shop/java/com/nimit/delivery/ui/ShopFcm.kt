@@ -81,6 +81,12 @@ class ShopMessagingService : FirebaseMessagingService() {
 
     override fun onMessageReceived(message: RemoteMessage) {
         if (ShopSession(this).shopId.isNullOrEmpty()) return
-        if (message.data["type"] == "new_order") ShopAlertService.start(this, ring = true)
+        if (message.data["type"] != "new_order") return
+        val oid: String = message.data["orderId"] ?: ""
+        // ข้อความทดสอบ (test = "1" หรือ orderId ขึ้นต้นด้วย TEST) ดังโดยไม่ต้องมีออเดอร์จริง
+        val isTest: Boolean = message.data["test"] == "1" || oid.startsWith("TEST", ignoreCase = true)
+        if (isTest) ShopAlertService.start(this, ring = false, testId = "test_" + oid.ifEmpty { System.currentTimeMillis().toString() },
+            title = message.data["title"] ?: "", body = message.data["body"] ?: "")
+        else ShopAlertService.start(this, ring = true)
     }
 }

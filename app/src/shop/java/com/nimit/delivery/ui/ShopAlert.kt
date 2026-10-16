@@ -306,7 +306,7 @@ class ShopAlertService : Service() {
             sc.launch {
                 while (isActive) {
                     val pend: Set<String> = s.orders.value.filter { it.status == "pending" }.map { it.id }.toSet()
-                    ShopAlert.unacked.retainAll(pend)
+                    ShopAlert.unacked.retainAll { it in pend || it.startsWith("test_") }
                     if (ShopAlert.unacked.isEmpty()) ShopAlert.stopLoop() else ShopAlert.startLoop(this@ShopAlertService)
                     delay(700)
                 }
@@ -318,7 +318,24 @@ class ShopAlertService : Service() {
                 }
             }
         }
+        // ข้อความทดสอบจากแอป dev: ดังเหมือนออเดอร์จริงโดยไม่ต้องมีออเดอร์ใน Firestore แล้วหยุดเองใน 20 วินาที
+        val testId: String = intent?.getStringExtra("testId") ?: ""
+        if (testId.isNotEmpty()) {
+            ShopAlert.unacked.add(testId)
+            notifyTest(testId, intent?.getStringExtra("title") ?: "", intent?.getStringExtra("body") ?: "")
+            scope?.launch { delay(20_000); ShopAlert.unacked.remove(testId) }
+        }
         return START_STICKY
+    }
+
+    private fun notifyTest(testId: String, title: String, body: String) {
+        val n = NotificationCompat.Builder(this, "shop_order_alert")
+            .setSmallIcon(R.drawable.ic_shop_notify).setColor(0xFF0C4AA6.toInt())
+            .setContentTitle(title.ifEmpty { "🔔 ทดสอบแจ้งเตือน" }).setContentText(body.ifEmpty { "ข้อความทดสอบจากระบบผู้พัฒนา" })
+            .setPriority(NotificationCompat.PRIORITY_HIGH).setCategory(NotificationCompat.CATEGORY_MESSAGE)
+            .setVibrate(longArrayOf(0, 400, 200, 400)).setAutoCancel(true)
+            .setContentIntent(openApp(this, 2)).build()
+        try { NotificationManagerCompat.from(this).notify(testId.hashCode(), n) } catch (e: SecurityException) { }
     }
 
     private fun notifyOrder(o: ShopOrd) {
@@ -355,8 +372,12 @@ class ShopAlertService : Service() {
         }
 
         /** ring = true: ถูกปลุกด้วยข้อความ FCM → ออเดอร์ pending ที่เพิ่งเข้า (ใน 15 นาที) ต้องดังด้วย */
-        fun start(ctx: Context, ring: Boolean = false) {
-            try { androidx.core.content.ContextCompat.startForegroundService(ctx, Intent(ctx, ShopAlertService::class.java).putExtra("ring", ring)) } catch (e: Exception) { }
+        fun start(ctx: Context, ring: Boolean = false, testId: String = "", title: String = "", body: String = "") {
+            try {
+                val i = Intent(ctx, ShopAlertService::class.java).putExtra("ring", ring)
+                if (testId.isNotEmpty()) i.putExtra("testId", testId).putExtra("title", title).putExtra("body", body)
+                androidx.core.content.ContextCompat.startForegroundService(ctx, i)
+            } catch (e: Exception) { }
         }
 
         fun stop(ctx: Context) {
