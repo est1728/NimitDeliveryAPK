@@ -65,7 +65,7 @@ fun ShopNav() {
             val need: Boolean = android.os.Build.VERSION.SDK_INT >= 33 &&
                 androidx.core.content.ContextCompat.checkSelfPermission(ctx, android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED
             if (need) notifPerm.launch(android.Manifest.permission.POST_NOTIFICATIONS) else ShopAlertService.start(ctx)
-            ShopFcm.register(cur.shopId)   // ลงทะเบียนโทเคนให้เซิร์ฟเวอร์ปลุกแอปตอนปิดอยู่
+            ShopFcm.register(ctx, cur.shopId)   // ลงทะเบียนโทเคนให้เซิร์ฟเวอร์ปลุกแอปตอนปิดอยู่
         } else ShopAlertService.stop(ctx)
     }
 
@@ -109,7 +109,7 @@ fun ShopNav() {
                 onEditInfo = { nav.navigate("manage") },
                 onAds = { nav.navigate("ads") },
                 onLogout = {
-                    ShopFcm.unregister(s.shopId)
+                    ShopFcm.unregister(ctx, s.shopId)
                     session.logout()
                     try { com.google.firebase.auth.FirebaseAuth.getInstance().signOut() } catch (e: Exception) { }
                     holder.store = null
