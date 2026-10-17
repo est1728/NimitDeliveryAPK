@@ -81,6 +81,7 @@ private val MBorder = Color(0xFFEEF0F4)
 private val MFieldBg = Color(0xFFFAFBFC)
 private val MGrad = Brush.linearGradient(listOf(C.Primary, C.PrimaryDark))
 private const val M_IMG_PH = "M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2z"
+private const val M_FULL = "M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"
 private const val M_LOC = "M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm1 17.93V18a1 1 0 0 0-2 0v1.93A8 8 0 0 1 4.07 13H6a1 1 0 0 0 0-2H4.07A8 8 0 0 1 11 4.07V6a1 1 0 0 0 2 0V4.07A8 8 0 0 1 19.93 11H18a1 1 0 0 0 0 2h1.93A8 8 0 0 1 13 19.93zM12 9a3 3 0 1 0 3 3 3 3 0 0 0-3-3z"
 private val M_DAYS = listOf("อา", "จ", "อ", "พ", "พฤ", "ศ", "ส")
 
@@ -115,6 +116,8 @@ fun ShopManageScreen(store: ShopStore, onBack: () -> Unit) {
     val openDays = remember { mutableStateListOf(0, 1, 2, 3, 4, 5, 6) }
     val closedDates = remember { mutableStateListOf<ClosedDate>() }
     var mapMove by remember { mutableStateOf<ShopMapMove?>(null) }
+    var mapFull by remember { mutableStateOf(false) }
+    var fullMove by remember { mutableStateOf<ShopMapMove?>(null) }
 
     var showBanner by remember { mutableStateOf(false) }
     var showAvatar by remember { mutableStateOf(false) }
@@ -194,7 +197,7 @@ fun ShopManageScreen(store: ShopStore, onBack: () -> Unit) {
     }
     ms.requestImage = { id: String -> cropTarget = id; cropShape = "menu"; picker.launch("image/*") }
     val locPerm = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { m: Map<String, Boolean> ->
-        if (m.values.any { it }) shopFindMe(ctx) { a, b -> lat = a; lng = b; mapMove = ShopMapMove(a, b); dirty = true }
+        if (m.values.any { it }) shopFindMe(ctx) { a, b -> lat = a; lng = b; mapMove = ShopMapMove(a, b); fullMove = ShopMapMove(a, b); dirty = true }
         else shopToast(ctx, "ไม่ได้รับสิทธิ์เข้าถึงตำแหน่ง ลองปักหมุดเองบนแผนที่แทนได้ครับ")
     }
 
@@ -227,6 +230,7 @@ fun ShopManageScreen(store: ShopStore, onBack: () -> Unit) {
 
     BackHandler {
         when {
+            mapFull -> { mapFull = false; mapMove = ShopMapMove(lat, lng) }
             cropBmp != null -> cropBmp = null
             ms.handleBack() -> { }
             saving -> { }
@@ -323,6 +327,11 @@ fun ShopManageScreen(store: ShopStore, onBack: () -> Unit) {
                     Box(Modifier.fillMaxWidth().height(220.dp).clip(RoundedCornerShape(14.dp)).border(1.5.dp, Color(0xFFE8EEF5), RoundedCornerShape(14.dp))) {
                         if (inited) ShopLocMap(lat, lng, mapMove, { a, b -> lat = a; lng = b; dirty = true }, Modifier.fillMaxSize())
                         Box(
+                            Modifier.align(Alignment.TopStart).padding(start = 10.dp, top = 10.dp).size(36.dp).shadow(4.dp, RoundedCornerShape(8.dp)).clip(RoundedCornerShape(8.dp)).background(Color.White)
+                                .clickable { fullMove = null; mapFull = true },
+                            contentAlignment = Alignment.Center
+                        ) { PathIcon(M_FULL, C.Primary, 20.dp) }
+                        Box(
                             Modifier.align(Alignment.BottomEnd).padding(end = 10.dp, bottom = 10.dp).size(40.dp).shadow(4.dp, CircleShape).clip(CircleShape).background(Color.White)
                                 .clickable { locPerm.launch(arrayOf(android.Manifest.permission.ACCESS_FINE_LOCATION, android.Manifest.permission.ACCESS_COARSE_LOCATION)) },
                             contentAlignment = Alignment.Center
@@ -414,6 +423,39 @@ fun ShopManageScreen(store: ShopStore, onBack: () -> Unit) {
         }
 
         // ---------- MODALS ----------
+        // แผนที่เต็มจอ: ปักหมุด/ลากหมุด/ไปตำแหน่งปัจจุบัน แล้วกดยืนยันเพื่อกลับ
+        if (mapFull) Box(
+            Modifier.fillMaxSize().background(Color.White).clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { }
+        ) {
+            Column(Modifier.fillMaxSize()) {
+                Row(
+                    Modifier.fillMaxWidth().background(MGrad).statusBarsPadding().padding(horizontal = 16.dp, vertical = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Box(Modifier.size(36.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.18f)).clickable { mapFull = false; mapMove = ShopMapMove(lat, lng) }, contentAlignment = Alignment.Center) {
+                        PathIcon("M19 12H5M12 5l-7 7 7 7", Color.White, 18.dp, stroke = true)
+                    }
+                    Text("ปักหมุดตำแหน่งร้าน", fontSize = 17.sp, fontWeight = FontWeight.ExtraBold, color = Color.White, modifier = Modifier.weight(1f), maxLines = 1)
+                }
+                Box(Modifier.weight(1f).fillMaxWidth()) {
+                    ShopLocMap(lat, lng, fullMove, { a, b -> lat = a; lng = b; dirty = true }, Modifier.fillMaxSize())
+                    Box(
+                        Modifier.align(Alignment.BottomEnd).padding(end = 14.dp, bottom = 14.dp).size(46.dp).shadow(4.dp, CircleShape).clip(CircleShape).background(Color.White)
+                            .clickable { locPerm.launch(arrayOf(android.Manifest.permission.ACCESS_FINE_LOCATION, android.Manifest.permission.ACCESS_COARSE_LOCATION)) },
+                        contentAlignment = Alignment.Center
+                    ) { PathIcon(M_LOC, C.Primary, 22.dp) }
+                    Text(
+                        "แตะแผนที่เพื่อปักหมุด หรือลากหมุดเพื่อขยับ", fontSize = 11.sp, color = C.Subtext,
+                        modifier = Modifier.align(Alignment.BottomStart).padding(start = 14.dp, bottom = 18.dp)
+                            .clip(RoundedCornerShape(8.dp)).background(Color.White.copy(alpha = 0.9f)).padding(horizontal = 10.dp, vertical = 6.dp)
+                    )
+                }
+                Box(Modifier.fillMaxWidth().background(Color.White).navigationBarsPadding().padding(16.dp)) {
+                    MBtn("ยืนยันตำแหน่งนี้", null, Color.White, FontWeight.ExtraBold) { mapFull = false; mapMove = ShopMapMove(lat, lng) }
+                }
+            }
+        }
+
         if (showUnsaved) MSheet(null) {
             MModalTitle("ยังไม่ได้บันทึกการเปลี่ยนแปลง")
             Text("มีข้อมูลที่แก้ไขแล้วแต่ยังไม่ได้บันทึก ต้องการทำอะไรต่อ?", fontSize = 13.sp, color = C.Subtext, modifier = Modifier.padding(bottom = 16.dp))
