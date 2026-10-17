@@ -30,7 +30,22 @@ private fun devAuditValue(k: String, v: Any?): String {
 }
 
 // สร้างบรรทัด "ชื่อฟิลด์: ก่อน → หลัง" สำหรับเพิ่ม/แก้ไขเขต (ไม่มีรหัสจริงในประวัติ)
-private fun devAuditDetails(action: String, before: Map<String, Any?>, after: Map<String, Any?>, codeChanged: Boolean): List<String> {
+private fun devAuditDetails(
+    action: String,
+    before: Map<String, Any?>,
+    after: Map<String, Any?>,
+    codeChanged: Boolean,
+    shopName: String,
+    names: List<String>
+): List<String> {
+    if (action == "move_shop" || action == "copy_shop") {
+        val from = names.getOrNull(0) ?: "-"
+        val to = names.getOrNull(1) ?: "-"
+        return listOf(
+            "ร้าน: " + (if (shopName.isEmpty()) "-" else shopName),
+            (if (action == "move_shop") "ย้ายจาก " else "คัดลอกจาก ") + from + " → " + to
+        )
+    }
     if (action != "create_zone" && action != "edit_zone") return emptyList()
     val out = ArrayList<String>()
     devAuditFields.forEach { (k, label) ->
@@ -60,7 +75,11 @@ object DevAuditRepo {
                 names = (d.get("zoneNames") as? List<*>)?.mapNotNull { it as? String } ?: emptyList(),
                 groupId = d.getString("groupId") ?: "",
                 zoneIds = (d.get("zoneIds") as? List<*>)?.mapNotNull { it as? String } ?: emptyList(),
-                details = devAuditDetails(action, before, after, d.getBoolean("codeChanged") == true)
+                details = devAuditDetails(
+                    action, before, after, d.getBoolean("codeChanged") == true,
+                    d.getString("shopName") ?: "",
+                    (d.get("zoneNames") as? List<*>)?.mapNotNull { it as? String } ?: emptyList()
+                )
             )
         }
     }

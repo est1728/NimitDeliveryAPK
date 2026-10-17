@@ -436,6 +436,9 @@ private fun DevZoneDetailScreen(
     var detail by remember { mutableStateOf<DevZoneDetail?>(null) }
     var err by remember { mutableStateOf(false) }
     var tick by remember { mutableStateOf(0) }
+    var moveShop by remember { mutableStateOf<DevShopRow?>(null) }
+    var moveNotice by remember { mutableStateOf("") }
+    var moveErr by remember { mutableStateOf(false) }
     LaunchedEffect(f, tick) {
         detail = null
         err = false
@@ -468,6 +471,9 @@ private fun DevZoneDetailScreen(
     }
     if (notice.isNotEmpty()) {
         DevCard { Text(notice, fontSize = 12.5.sp, fontWeight = FontWeight.Bold, color = if (noticeErr) DevC.R else DevC.Gn) }
+    }
+    if (moveNotice.isNotEmpty()) {
+        DevCard { Text(moveNotice, fontSize = 12.5.sp, fontWeight = FontWeight.Bold, color = if (moveErr) DevC.R else DevC.Gn) }
     }
 
     DevCard {
@@ -521,7 +527,7 @@ private fun DevZoneDetailScreen(
         DevCard {
             Text("ร้านค้าในเขต (" + d.shops.size + ")", fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = DevC.P, modifier = Modifier.padding(bottom = 6.dp))
             if (d.shops.isEmpty()) Text("ยังไม่มีร้านในเขตนี้", fontSize = 12.sp, color = DevC.S)
-            d.shops.forEach { s -> DevShopLine(s) }
+            d.shops.forEach { s -> DevShopLine(s, all, f.id) { moveShop = s } }
         }
         DevCard {
             Text("ออเดอร์ล่าสุดของเขต", fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = DevC.P, modifier = Modifier.padding(bottom = 6.dp))
@@ -552,6 +558,19 @@ private fun DevZoneDetailScreen(
             }
         }
     }
+    val ms = moveShop
+    if (ms != null) {
+        DevMoveShopDialog(
+            shop = ms, from = f, all = all,
+            onDismiss = { moveShop = null },
+            onDone = { msg ->
+                moveShop = null
+                moveNotice = msg
+                moveErr = false
+                tick++
+            }
+        )
+    }
 }
 
 @Composable
@@ -563,15 +582,97 @@ private fun DevInfoRow(label: String, value: String) {
 }
 
 @Composable
-private fun DevShopLine(s: DevShopRow) {
-    Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text(s.name, fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold, color = DevC.T, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-        when (s.isOpen) {
-            true -> DevBadge("เปิด", DevC.GnL, DevC.Gn)
-            false -> DevBadge("ปิด", Color(0xFFF1F5F9), DevC.S)
-            null -> DevBadge("-", Color(0xFFF1F5F9), DevC.S)
+private fun DevShopLine(s: DevShopRow, all: List<DevFranchise>, thisZoneId: String, onMove: () -> Unit) {
+    val others = s.zoneIds.filter { it != thisZoneId }.map { id -> all.firstOrNull { it.id == id }?.name ?: "เขตอื่น" }
+    Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(s.name, fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold, color = DevC.T, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+            when (s.isOpen) {
+                true -> DevBadge("เปิด", DevC.GnL, DevC.Gn)
+                false -> DevBadge("ปิด", Color(0xFFF1F5F9), DevC.S)
+                null -> DevBadge("-", Color(0xFFF1F5F9), DevC.S)
+            }
+            Text(
+                "ย้าย/คัดลอก", fontSize = 11.5.sp, fontWeight = FontWeight.ExtraBold, color = DevC.P,
+                modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable { onMove() }.padding(horizontal = 6.dp, vertical = 4.dp)
+            )
+        }
+        if (others.isNotEmpty()) {
+            Text("อยู่หลายเขต: ร่วมกับ " + others.joinToString(", "), fontSize = 11.sp, color = DevC.O)
         }
     }
+}
+
+// ย้ายร้านไปอีกเขต: ย้ายไปเลย (ออกจากเขตนี้) หรือคัดลอก (ให้ร้านอยู่ทั้งสองเขต)
+@Composable
+private fun DevMoveShopDialog(
+    shop: DevShopRow,
+    from: DevFranchise,
+    all: List<DevFranchise>,
+    onDismiss: () -> Unit,
+    onDone: (String) -> Unit
+) {
+    val targets = all.filter { it.id != from.id && it.id !in shop.zoneIds }
+    var copy by remember { mutableStateOf(false) }
+    var targetId by remember { mutableStateOf("") }
+    var busy by remember { mutableStateOf(false) }
+    var err by remember { mutableStateOf("") }
+    val scope = rememberCoroutineScope()
+    AlertDialog(
+        onDismissRequest = { if (!busy) onDismiss() },
+        containerColor = Color.White,
+        title = { Text("ย้ายร้าน", fontSize = 17.sp, fontWeight = FontWeight.ExtraBold) },
+        text = {
+            Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
+                Text(shop.name, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = DevC.T)
+                Text("จากเขต " + from.name, fontSize = 12.sp, color = DevC.S, modifier = Modifier.padding(bottom = 10.dp))
+                Text("วิธี", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = DevC.S, modifier = Modifier.padding(bottom = 6.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(bottom = 6.dp)) {
+                    DevFormChip("ย้ายไปเลย", !copy, DevC.P) { copy = false }
+                    DevFormChip("คัดลอก (อยู่ 2 เขต)", copy, DevC.Gn) { copy = true }
+                }
+                Text(
+                    if (copy) "ร้านจะอยู่ทั้งเขตนี้และเขตปลายทาง (ขึ้นแสดงทั้งสองที่)" else "ร้านจะออกจากเขตนี้ ไปอยู่เขตปลายทางอย่างเดียว",
+                    fontSize = 11.sp, color = DevC.S, lineHeight = 16.sp, modifier = Modifier.padding(bottom = 10.dp)
+                )
+                Text("เขตปลายทาง", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = DevC.S, modifier = Modifier.padding(bottom = 6.dp))
+                if (targets.isEmpty()) {
+                    Text("ไม่มีเขตอื่นให้เลือก (ร้านนี้อยู่ครบทุกเขตแล้ว หรือมีเขตเดียว)", fontSize = 12.sp, color = DevC.S)
+                } else {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        targets.forEach { z -> DevFormChip(z.name, targetId == z.id, DevC.P) { targetId = z.id } }
+                    }
+                }
+                if (err.isNotEmpty()) {
+                    Text(err, fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold, color = DevC.R, modifier = Modifier.padding(top = 8.dp))
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = !busy && targetId.isNotEmpty(),
+                onClick = {
+                    val to = targets.firstOrNull { it.id == targetId }
+                    if (to == null) {
+                        err = "กรุณาเลือกเขตปลายทาง"
+                    } else {
+                        busy = true
+                        err = ""
+                        scope.launch {
+                            val r = DevDetailRepo.moveShop(shop.id, shop.name, from, to, copy)
+                            busy = false
+                            if (r == null) {
+                                onDone((if (copy) "คัดลอก " else "ย้าย ") + shop.name + " ไปเขต " + to.name + " แล้ว และบันทึกประวัติแล้ว")
+                            } else {
+                                err = r
+                            }
+                        }
+                    }
+                }
+            ) { Text(if (busy) "กำลังบันทึก..." else if (copy) "คัดลอก" else "ย้าย", color = DevC.P, fontWeight = FontWeight.Bold) }
+        },
+        dismissButton = { TextButton(enabled = !busy, onClick = onDismiss) { Text("ยกเลิก", color = DevC.S) } }
+    )
 }
 
 @Composable
@@ -592,6 +693,8 @@ private fun DevAuditLine(a: DevAuditItem) {
         "unlink_zone" -> "เลิกผูกเขต"
         "create_zone" -> "เพิ่มเขต"
         "edit_zone" -> "แก้ไขเขต"
+        "move_shop" -> "ย้ายร้าน"
+        "copy_shop" -> "คัดลอกร้าน"
         else -> a.action
     }
     val time = if (a.atMillis <= 0L) "กำลังบันทึก"
