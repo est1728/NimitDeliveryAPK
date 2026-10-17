@@ -1,0 +1,157 @@
+#!/bin/bash
+# หน้าประวัติการเปลี่ยนแปลงของแอป dev (อ่านจาก franchiseAudit) รันซ้ำได้
+set -e
+D=app/src/dev/java/com/nimit/delivery
+N="$D/ui/DevNav.kt"
+[ -f "$N" ] && [ -f "$D/ui/DevNotify.kt" ] || { echo "หยุด: ไม่เจอไฟล์ dev ชุดก่อนหน้า (ต้องรัน dev-notify.sh ก่อน และรันใน ~/nimit-customer)"; exit 1; }
+if ! grep -q "DevAuditScreen" "$N"; then
+  grep -q "DevNotifyScreen() else DevCard {" "$N" || { echo "หยุด: ไม่เจอจุดยึดใน DevNav.kt (ส่งผล grep -n 'cur ==' $N มาให้ดู)"; exit 1; }
+  sed -i 's/DevNotifyScreen() else DevCard {/DevNotifyScreen() else if (cur == "audit") DevAuditScreen() else DevCard {/' "$N"
+fi
+cat > "$D/data/DevAudit.kt" <<'KT_EOF'
+package com.nimit.delivery.data
+
+import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.Query
+import kotlinx.coroutines.tasks.await
+
+data class DevAuditItem(
+    val id: String,
+    val action: String,
+    val by: String,
+    val atMillis: Long,
+    val names: List<String>,
+    val groupId: String
+)
+
+// อ่านประวัติการเปลี่ยนแปลงเขต (franchiseAudit) อ่านอย่างเดียว เรียงใหม่สุดก่อน
+object DevAuditRepo {
+    suspend fun recent(limit: Long = 100): List<DevAuditItem> {
+        val snap = FirebaseFirestore.getInstance().collection("franchiseAudit")
+            .orderBy("at", Query.Direction.DESCENDING)
+            .limit(limit)
+            .get()
+            .await()
+        return snap.documents.map { d ->
+            DevAuditItem(
+                id = d.id,
+                action = d.getString("action") ?: "",
+                by = d.getString("by") ?: "",
+                atMillis = d.getTimestamp("at")?.toDate()?.time ?: 0L,
+                names = (d.get("zoneNames") as? List<*>)?.mapNotNull { it as? String } ?: emptyList(),
+                groupId = d.getString("groupId") ?: ""
+            )
+        }
+    }
+}
+KT_EOF
+cat > "$D/ui/DevAudit.kt" <<'KT_EOF'
+package com.nimit.delivery.ui
+
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.nimit.delivery.data.DevAuditItem
+import com.nimit.delivery.data.DevAuditRepo
+import kotlinx.coroutines.CancellationException
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+
+private fun devAuditLabel(a: String): String = when (a) {
+    "link_zones" -> "ผูกเขต"
+    "unlink_zone" -> "เลิกผูกเขต"
+    else -> a
+}
+
+private fun devAuditTime(ms: Long): String =
+    if (ms <= 0L) "กำลังบันทึก" else SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.US).format(Date(ms))
+
+// หน้าประวัติการเปลี่ยนแปลง: ใครทำอะไรกับเขต เมื่อไร (อ่านอย่างเดียว ลบ/แก้ไม่ได้จากแอป)
+@Composable
+fun DevAuditScreen() {
+    var list by remember { mutableStateOf<List<DevAuditItem>?>(null) }
+    var err by remember { mutableStateOf(false) }
+    var tick by remember { mutableStateOf(0) }
+    LaunchedEffect(tick) {
+        list = null
+        err = false
+        try {
+            list = DevAuditRepo.recent()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            err = true
+        }
+    }
+    val l = list
+    Row(Modifier.fillMaxWidth().padding(bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            if (l == null) "ประวัติการเปลี่ยนแปลง" else "ประวัติการเปลี่ยนแปลง (" + l.size + ")",
+            fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, color = DevC.T,
+            maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f)
+        )
+        Text(
+            "รีเฟรช", fontSize = 12.5.sp, fontWeight = FontWeight.Bold, color = DevC.P,
+            modifier = Modifier.clickable { tick++ }.padding(horizontal = 6.dp, vertical = 6.dp)
+        )
+    }
+    when {
+        err -> DevCard(Modifier.clickable { tick++ }) {
+            Text("โหลดประวัติไม่สำเร็จ", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = DevC.R)
+            Text("แตะเพื่อลองใหม่ (ตรวจสอบอินเทอร์เน็ตและสิทธิ์อ่านข้อมูล)", fontSize = 11.5.sp, color = DevC.S, modifier = Modifier.padding(top = 4.dp))
+        }
+        l == null -> DevCard { Text("กำลังโหลด...", fontSize = 13.sp, color = DevC.S) }
+        l.isEmpty() -> DevCard {
+            Text("ยังไม่มีประวัติ", fontSize = 13.sp, color = DevC.S)
+            Text("ทุกครั้งที่ผูกเขตหรือเลิกผูกเขต ระบบจะบันทึกไว้ที่นี่", fontSize = 11.sp, color = DevC.S, modifier = Modifier.padding(top = 6.dp))
+        }
+        else -> l.forEach { a -> DevAuditCard(a) }
+    }
+}
+
+@Composable
+private fun DevAuditCard(a: DevAuditItem) {
+    val unlink = a.action == "unlink_zone"
+    DevCard {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(Modifier.weight(1f)) {
+                Text(
+                    if (a.names.isEmpty()) "-" else a.names.joinToString(" + "),
+                    fontSize = 13.5.sp, fontWeight = FontWeight.Bold, color = DevC.T, maxLines = 2, overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    (if (a.by.isEmpty()) "ไม่ทราบผู้ทำ" else a.by) + " · " + devAuditTime(a.atMillis),
+                    fontSize = 11.5.sp, color = DevC.S, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp)
+                )
+            }
+            if (unlink) DevBadge(devAuditLabel(a.action), DevC.RL, DevC.R)
+            else if (a.action == "link_zones") DevBadge(devAuditLabel(a.action), DevC.PL, DevC.P)
+            else DevBadge(devAuditLabel(a.action), Color(0xFFF1F5F9), DevC.S)
+        }
+        if (a.groupId.isNotEmpty()) {
+            Text("รหัสกลุ่มหลังบ้าน: " + a.groupId, fontSize = 11.sp, color = DevC.S, modifier = Modifier.padding(top = 6.dp))
+        }
+    }
+}
+KT_EOF
+echo "== ตรวจผล =="
+grep -n "DevAuditScreen" "$N"
+git status --short
