@@ -14,7 +14,7 @@ jobs:
           java-version: 17
       - uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: "8.9"
+          gradle-version: "8.13"
       - run: gradle assembleCustomerDebug --no-daemon
       - uses: actions/upload-artifact@v4
         with:
@@ -57,3 +57,21 @@ jobs:
         run: |
           cp app/build/outputs/apk/dev/release/*.apk NimitDev-build-${{ github.run_number }}.apk
           gh release create "dev-build-${{ github.run_number }}" NimitDev-build-${{ github.run_number }}.apk --repo est1728/NimitDelivery-releases --title "Dev ${{ github.run_number }}" --notes "dev test" --prerelease
+
+      # ไฟล์ AAB สำหรับอัปโหลด Play Store (ทำเมื่อมี secret คีย์อัปโหลดครบ ถ้าไม่มีจะข้ามไปเฉยๆ)
+      - name: Build shop AAB (Play Store)
+        continue-on-error: true
+        env:
+          UPLOAD_KEYSTORE_B64: ${{ secrets.UPLOAD_KEYSTORE_B64 }}
+          UPLOAD_STORE_PASSWORD: ${{ secrets.UPLOAD_STORE_PASSWORD }}
+          UPLOAD_KEY_ALIAS: ${{ secrets.UPLOAD_KEY_ALIAS }}
+          UPLOAD_KEY_PASSWORD: ${{ secrets.UPLOAD_KEY_PASSWORD }}
+        run: |
+          if [ -z "$UPLOAD_KEYSTORE_B64" ]; then echo "ไม่มี secret คีย์อัปโหลด ข้ามการสร้าง AAB"; exit 0; fi
+          echo "$UPLOAD_KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/upload.keystore"
+          UPLOAD_KEYSTORE_PATH="$RUNNER_TEMP/upload.keystore" gradle bundleShopRelease --no-daemon
+      - uses: actions/upload-artifact@v4
+        if: hashFiles('app/build/outputs/bundle/shopRelease/*.aab') != ''
+        with:
+          name: NimitShop-aab
+          path: app/build/outputs/bundle/shopRelease/*.aab

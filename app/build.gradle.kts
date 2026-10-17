@@ -6,7 +6,7 @@ plugins {
 
 android {
     namespace = "com.nimit.delivery"
-    compileSdk = 34
+    compileSdk = 36
 
     defaultConfig {
         minSdk = 24
@@ -19,7 +19,8 @@ android {
     productFlavors {
         create("customer") { dimension = "app"; applicationId = "com.nimit.delivery" }
         create("admin") { dimension = "app"; applicationId = "com.nimit.delivery.admin" }
-        create("shop") { dimension = "app"; applicationId = "com.nimit.delivery.shop" }
+        // Play Store บังคับ target API 36 สำหรับแอปใหม่ (ตั้งเฉพาะแอปร้าน แอปอื่นยังใช้ 34 จนกว่าจะจัดการขอบจอเสร็จ)
+        create("shop") { dimension = "app"; applicationId = "com.nimit.delivery.shop"; targetSdk = 36 }
         create("rider") { dimension = "app"; applicationId = "com.nimit.delivery.rider" }
         create("dev") { dimension = "app"; applicationId = "com.nimit.delivery.dev" }
     }
@@ -31,13 +32,25 @@ android {
             keyPassword = "nimit1234"
         }
     }
+    // คีย์อัปโหลดสำหรับ Play Store (เก็บเป็น secret ใน GitHub ไม่อยู่ในรีโป) ใช้เฉพาะตอนสร้าง AAB ที่ตั้งตัวแปร UPLOAD_KEYSTORE_PATH
+    signingConfigs {
+        create("upload") {
+            val p: String? = System.getenv("UPLOAD_KEYSTORE_PATH")
+            if (p != null) {
+                storeFile = file(p)
+                storePassword = System.getenv("UPLOAD_STORE_PASSWORD")
+                keyAlias = System.getenv("UPLOAD_KEY_ALIAS")
+                keyPassword = System.getenv("UPLOAD_KEY_PASSWORD")
+            }
+        }
+    }
     buildTypes {
         debug { signingConfig = signingConfigs.getByName("nimit") }
         release {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            signingConfig = signingConfigs.getByName("nimit")
+            signingConfig = if (System.getenv("UPLOAD_KEYSTORE_PATH") != null) signingConfigs.getByName("upload") else signingConfigs.getByName("nimit")
         }
     }
     lint { checkReleaseBuilds = false }
