@@ -5,14 +5,25 @@ import com.google.firebase.auth.FirebaseAuthInvalidCredentialsException
 import com.google.firebase.auth.FirebaseAuthInvalidUserException
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.FirebaseFirestoreException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.tasks.await
 import java.util.UUID
+
+/** ข้อความผิดพลาดตอนเขียนข้อมูล: แยกกรณีสิทธิ์ (Firestore rules) ออกจากปัญหาอื่น เพื่อไม่ต้องเดาสาเหตุ */
+fun devWriteError(ex: Exception): String {
+    if (ex is FirebaseFirestoreException && ex.code == FirebaseFirestoreException.Code.PERMISSION_DENIED) {
+        return "ไม่มีสิทธิ์เขียนข้อมูล (Firestore rules ยังไม่อนุญาตบัญชีนี้)"
+    }
+    return "บันทึกไม่สำเร็จ: " + (ex.message ?: ex.javaClass.simpleName).take(120)
+}
 
 data class DevFranchise(
     val id: String,
     val name: String,
     val province: String,
+    val phone: String,
+    val hasCode: Boolean,
     val ownerEmail: String,
     val monthlyFee: Double,
     val status: String,
@@ -80,6 +91,8 @@ object DevRepo {
                 id = d.id,
                 name = d.getString("name") ?: "แฟรนไชส์",
                 province = d.getString("province") ?: "",
+                phone = d.getString("phone") ?: "",
+                hasCode = (d.getString("pinHash") ?: "").isNotEmpty(),
                 ownerEmail = d.getString("ownerEmail") ?: "",
                 monthlyFee = d.getDouble("monthlyFee") ?: 0.0,
                 status = d.getString("status") ?: "",
@@ -126,7 +139,7 @@ object DevRepo {
         } catch (ex: CancellationException) {
             throw ex
         } catch (ex: Exception) {
-            "บันทึกไม่สำเร็จ (ตรวจสอบอินเทอร์เน็ตและสิทธิ์เขียนข้อมูล)"
+            devWriteError(ex)
         }
     }
 
@@ -157,7 +170,7 @@ object DevRepo {
         } catch (ex: CancellationException) {
             throw ex
         } catch (ex: Exception) {
-            "บันทึกไม่สำเร็จ (ตรวจสอบอินเทอร์เน็ตและสิทธิ์เขียนข้อมูล)"
+            devWriteError(ex)
         }
     }
 }

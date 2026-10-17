@@ -30,6 +30,8 @@ import java.util.Locale
 private fun devAuditLabel(a: String): String = when (a) {
     "link_zones" -> "ผูกเขต"
     "unlink_zone" -> "เลิกผูกเขต"
+    "create_zone" -> "เพิ่มเขต"
+    "edit_zone" -> "แก้ไขเขต"
     else -> a
 }
 
@@ -96,7 +98,12 @@ private fun DevAuditCard(a: DevAuditItem) {
             }
             if (unlink) DevBadge(devAuditLabel(a.action), DevC.RL, DevC.R)
             else if (a.action == "link_zones") DevBadge(devAuditLabel(a.action), DevC.PL, DevC.P)
+            else if (a.action == "create_zone") DevBadge(devAuditLabel(a.action), DevC.GnL, DevC.Gn)
+            else if (a.action == "edit_zone") DevBadge(devAuditLabel(a.action), DevC.OL, DevC.O)
             else DevBadge(devAuditLabel(a.action), Color(0xFFF1F5F9), DevC.S)
+        }
+        a.details.forEach { line ->
+            Text(line, fontSize = 11.5.sp, color = DevC.T, modifier = Modifier.padding(top = 4.dp))
         }
         if (a.groupId.isNotEmpty()) {
             Text("รหัสกลุ่มหลังบ้าน: " + a.groupId, fontSize = 11.sp, color = DevC.S, modifier = Modifier.padding(top = 6.dp))
