@@ -35,7 +35,7 @@ import androidx.compose.ui.unit.sp
 data class LegalSection(val title: String, val lines: List<String>)
 
 /** ลิงก์ LINE ของผู้ดูแลระบบ (ใช้ร่วมทุกแอป) ถ้าเว้นว่างจะซ่อนปุ่มทักไลน์ */
-const val ADMIN_LINE_URL: String = ""
+const val ADMIN_LINE_URL: String = "https://lin.ee/6rWI6rH"
 
 @Composable
 fun LegalScreen(title: String, version: String, sections: List<LegalSection>, onBack: () -> Unit) {
