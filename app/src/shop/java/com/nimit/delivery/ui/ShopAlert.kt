@@ -32,6 +32,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -486,7 +487,15 @@ fun ShopVolumeControl() {
         }
         Row(Modifier.padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("เสียงที่ใช้: " + soundName, fontSize = 12.sp, color = C.Subtext, maxLines = 1, modifier = Modifier.weight(1f))
-            if (!ShopAlert.isNimitSound(ctx)) Text("ใช้เสียง Nimit", fontSize = 12.sp, fontWeight = FontWeight.ExtraBold, color = C.Primary, modifier = Modifier.clickable { ShopAlert.setSoundPref(ctx, ShopAlert.NIMIT); soundName = ShopAlert.soundTitle(ctx); runTest() }.padding(start = 8.dp))
+        }
+        // ปุ่มกลับไปใช้เสียงของแอพ (เห็นชัด) แสดงเมื่อเลือกเสียงจากเครื่องอยู่
+        if (!ShopAlert.isNimitSound(ctx)) {
+            Box(
+                Modifier.fillMaxWidth().padding(top = 8.dp).height(40.dp).clip(RoundedCornerShape(10.dp)).background(Color.White)
+                    .border(1.5.dp, C.Primary, RoundedCornerShape(10.dp))
+                    .clickable { ShopAlert.setSoundPref(ctx, ShopAlert.NIMIT); soundName = ShopAlert.soundTitle(ctx); runTest() },
+                contentAlignment = Alignment.Center
+            ) { Text("กลับไปใช้เสียงของแอพ (Nimit)", fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = C.Primary) }
         }
         Row(Modifier.padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
