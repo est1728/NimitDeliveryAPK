@@ -88,6 +88,9 @@ object ShopAlert {
     /** ออเดอร์ใหม่ที่ยังไม่ได้เปิดดูรายละเอียด (ยังมีรายการในนี้ = เสียงยังดังวน) */
     val unacked: MutableSet<String> = java.util.Collections.synchronizedSet(HashSet<String>())
 
+    /** ออเดอร์ที่เสียงเตือนดังไปแล้ว (โหมดดังรอบเดียว) กันดังซ้ำออเดอร์เดิม */
+    val rung: MutableSet<String> = java.util.Collections.synchronizedSet(HashSet<String>())
+
     private val pcm: ShortArray by lazy { build() }
 
     private fun build(): ShortArray {
@@ -112,6 +115,12 @@ object ShopAlert {
     }
 
     private fun prefs(ctx: Context) = ctx.applicationContext.getSharedPreferences("nimit_shop", Context.MODE_PRIVATE)
+    /** true = เสียงวนซ้ำจนกว่าจะเปิดดูออเดอร์, false (ค่าเริ่มต้น) = ดังรอบเดียวต่อออเดอร์ใหม่ */
+    fun repeat(ctx: Context): Boolean = prefs(ctx).getBoolean("alertRepeat", false)
+    fun setRepeat(ctx: Context, v: Boolean) {
+        prefs(ctx).edit().putBoolean("alertRepeat", v).apply()
+        if (!v) stopLoop()
+    }
     fun volume(ctx: Context): Int = prefs(ctx).getInt("alertVol", 80)
     fun setVolume(ctx: Context, v: Int) {
         prefs(ctx).edit().putInt("alertVol", v.coerceIn(0, 100)).apply()
@@ -177,6 +186,7 @@ object ShopAlert {
     private var mpLoop: MediaPlayer? = null
     private var mpTest: MediaPlayer? = null
     private var nextRun: Runnable? = null
+    private var once = false
     const val NIMIT = "nimit"
 
     /** "" หรือ "nimit" = เสียง Nimit (ไฟล์ในแอพ ค่าเริ่มต้น), "system" = เสียงแจ้งเตือนเริ่มต้นของเครื่อง, อื่นๆ = uri ที่เลือก */
@@ -212,14 +222,21 @@ object ShopAlert {
     private fun playNext(ctx: Context, u: Uri) {
         if (!looping) return
         val p: MediaPlayer? = player(ctx, u)
-        if (p == null) { startSynth(ctx); return }   // เปิดไฟล์เสียงไม่ได้ ใช้เสียงมาตรฐานแทน
+        if (p == null) {   // เปิดไฟล์เสียงไม่ได้ ใช้เสียงมาตรฐานแทน
+            if (once) { once = false; looping = false; testSynth(ctx) } else startSynth(ctx)
+            return
+        }
         mpLoop = p
         p.setOnCompletionListener { m: MediaPlayer ->
             if (mpLoop === m) mpLoop = null
             release(m)
-            val r = Runnable { playNext(ctx, u) }
-            nextRun = r
-            main.postDelayed(r, if (u.scheme == "android.resource") 700L else 1200L)   // เว้นช่วงสั้นๆ ระหว่างรอบ เสียงไม่ซ้อนกัน
+            if (once) {
+                once = false; looping = false   // ดังรอบเดียวแล้วจบ
+            } else {
+                val r = Runnable { playNext(ctx, u) }
+                nextRun = r
+                main.postDelayed(r, if (u.scheme == "android.resource") 700L else 1200L)   // เว้นช่วงสั้นๆ ระหว่างรอบ เสียงไม่ซ้อนกัน
+            }
         }
         p.start()
     }
@@ -230,11 +247,22 @@ object ShopAlert {
         looping = true
         boost(ctx)
         val u: Uri? = realUri(ctx)
-        if (u == null) startSynth(ctx) else playNext(ctx.applicationContext, u)
+        if (u == null) {
+            if (once) { once = false; looping = false; testSynth(ctx) } else startSynth(ctx)
+        } else playNext(ctx.applicationContext, u)
+    }
+
+    /** ดังรอบเดียว คืน true เมื่อเริ่มเล่นจริง (ถ้ากำลังเล่นอยู่คืน false เพื่อให้ลองใหม่รอบถัดไป) */
+    fun playOnce(ctx: Context): Boolean {
+        if (looping) return false
+        once = true
+        startLoop(ctx)
+        return true
     }
 
     fun stopLoop() {
         looping = false
+        once = false
         val r: Runnable? = nextRun
         if (r != null) main.removeCallbacks(r)
         nextRun = null
@@ -307,7 +335,13 @@ class ShopAlertService : Service() {
                 while (isActive) {
                     val pend: Set<String> = s.orders.value.filter { it.status == "pending" }.map { it.id }.toSet()
                     ShopAlert.unacked.retainAll { it in pend || it.startsWith("test_") }
-                    if (ShopAlert.unacked.isEmpty()) ShopAlert.stopLoop() else ShopAlert.startLoop(this@ShopAlertService)
+                    ShopAlert.rung.retainAll { it in ShopAlert.unacked }
+                    if (ShopAlert.unacked.isEmpty()) ShopAlert.stopLoop()
+                    else if (ShopAlert.repeat(this@ShopAlertService)) ShopAlert.startLoop(this@ShopAlertService)
+                    else {
+                        val fresh: List<String> = ShopAlert.unacked.toList().filter { it !in ShopAlert.rung }
+                        if (fresh.isNotEmpty() && ShopAlert.playOnce(this@ShopAlertService)) ShopAlert.rung.addAll(fresh)
+                    }
                     delay(700)
                 }
             }
@@ -402,6 +436,7 @@ fun ShopVolumeControl() {
     LaunchedEffect(playing) { if (playing) { kotlinx.coroutines.delay(1900); playing = false } }
     fun runTest() { ShopAlert.test(ctx); playing = true }
     var soundName by remember { mutableStateOf(ShopAlert.soundTitle(ctx)) }
+    var rep by remember { mutableStateOf(ShopAlert.repeat(ctx)) }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { r ->
         val d: Intent? = r.data
         if (r.resultCode == android.app.Activity.RESULT_OK && d != null) {
@@ -452,6 +487,16 @@ fun ShopVolumeControl() {
         Row(Modifier.padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("เสียงที่ใช้: " + soundName, fontSize = 12.sp, color = C.Subtext, maxLines = 1, modifier = Modifier.weight(1f))
             if (!ShopAlert.isNimitSound(ctx)) Text("ใช้เสียง Nimit", fontSize = 12.sp, fontWeight = FontWeight.ExtraBold, color = C.Primary, modifier = Modifier.clickable { ShopAlert.setSoundPref(ctx, ShopAlert.NIMIT); soundName = ShopAlert.soundTitle(ctx); runTest() }.padding(start = 8.dp))
+        }
+        Row(Modifier.padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("เตือนซ้ำจนกว่าจะเปิดดูออเดอร์", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = C.Text)
+                Text(if (rep) "เสียงดังวนซ้ำ" else "เสียงดังรอบเดียวต่อออเดอร์ใหม่", fontSize = 12.sp, color = C.Subtext)
+            }
+            androidx.compose.material3.Switch(
+                checked = rep, onCheckedChange = { v: Boolean -> rep = v; ShopAlert.setRepeat(ctx, v) },
+                colors = androidx.compose.material3.SwitchDefaults.colors(checkedTrackColor = C.Primary, checkedThumbColor = Color.White)
+            )
         }
     }
 }
