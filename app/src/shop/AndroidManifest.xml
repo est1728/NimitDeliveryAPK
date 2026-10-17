@@ -3,6 +3,8 @@
     xmlns:tools="http://schemas.android.com/tools">
     <!-- Play Store: แอปไม่อัปเดตตัวเอง จึงถอดสิทธิ์ติดตั้งแอป (ที่ main ประกาศไว้ให้แฟลเวอร์อื่น) -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" tools:node="remove" />
+    <!-- แอปร้านไม่มีฟีเจอร์อัดเสียง (ที่ main ประกาศไว้ให้แชทของแฟลเวอร์อื่น) จึงถอดสิทธิ์ไมค์ออก -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" tools:node="remove" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />

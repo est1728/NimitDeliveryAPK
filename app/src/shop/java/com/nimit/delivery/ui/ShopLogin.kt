@@ -59,7 +59,7 @@ import androidx.compose.runtime.mutableIntStateOf
 
 /** หน้าเข้าสู่ระบบร้านด้วยเบอร์โทร + ยืนยัน OTP (Firebase Phone Auth) — HTML ไม่มีหน้า login จึงใช้สไตล์เดียวกับส่วนหัวของแอป */
 @Composable
-fun ShopLoginScreen(onLoggedIn: (ShopInfo) -> Unit) {
+fun ShopLoginScreen(onTerms: () -> Unit, onPrivacy: () -> Unit, onLoggedIn: (ShopInfo) -> Unit) {
     val scope = rememberCoroutineScope()
     var phone by remember { mutableStateOf("") }
     var loading by remember { mutableStateOf(false) }
@@ -191,6 +191,7 @@ fun ShopLoginScreen(onLoggedIn: (ShopInfo) -> Unit) {
                 )
                 if (error.isNotEmpty()) Text(error, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = ShopRed)
                 GradientButton(if (loading) "กำลังตรวจสอบ..." else "ขอรหัส OTP", enabled = !loading && phone.length >= 9) { submit() }
+                LegalFooter(onTerms, onPrivacy)
             } else {
                 Text("เบอร์นี้มีหลายร้าน", fontSize = 17.sp, fontWeight = FontWeight.ExtraBold, color = C.Text)
                 Text("เลือกร้านที่ต้องการจัดการ", fontSize = 13.sp, color = C.Subtext)

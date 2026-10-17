@@ -91,7 +91,7 @@ fun ShopNav() {
         popExitTransition = { slideOutHorizontally(tween(200)) { it / 6 } + fadeOut(tween(160)) }
     ) {
         composable("login") {
-            ShopLoginScreen(onLoggedIn = { s: ShopInfo ->
+            ShopLoginScreen(onTerms = { nav.navigate("terms") }, onPrivacy = { nav.navigate("privacy") }, onLoggedIn = { s: ShopInfo ->
                 session.shopId = s.id
                 session.shopName = s.name
                 session.shopPhone = s.phone
@@ -99,6 +99,8 @@ fun ShopNav() {
                 nav.navigate("home") { popUpTo("login") { inclusive = true } }
             })
         }
+        composable("terms") { LegalScreen("เงื่อนไขการใช้บริการ", ShopLegal.VERSION, ShopLegal.TERMS) { nav.popBackStack() } }
+        composable("privacy") { LegalScreen("นโยบายข้อมูลส่วนบุคคล", ShopLegal.VERSION, ShopLegal.PRIVACY) { nav.popBackStack() } }
         composable("home") {
             val s: ShopStore = holder.store ?: return@composable
             ShopHome(
