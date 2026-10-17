@@ -17,10 +17,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.*
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -40,40 +44,69 @@ const val ADMIN_LINE_URL: String = "https://lin.ee/6rWI6rH"
 @Composable
 fun LegalScreen(title: String, version: String, sections: List<LegalSection>, onBack: () -> Unit) {
     Column(Modifier.fillMaxSize().background(C.Gray)) {
+        val hs = RoundedCornerShape(bottomStart = 30.dp, bottomEnd = 30.dp)
         Box(
-            Modifier.fillMaxWidth().background(Brush.linearGradient(listOf(C.Primary, C.PrimaryDark))).statusBarsPadding().padding(horizontal = 16.dp, vertical = 14.dp),
-            contentAlignment = Alignment.Center
+            Modifier.fillMaxWidth().clip(hs)
+                .background(Brush.linearGradient(listOf(Color(0xFF1560C8), C.Primary, C.PrimaryDark)))
+                .drawBehind {
+                    drawCircle(Color.White.copy(alpha = 0.07f), radius = 110.dp.toPx(), center = Offset(size.width * 0.95f, 0f))
+                    drawCircle(Color.White.copy(alpha = 0.06f), radius = 80.dp.toPx(), center = Offset(size.width * 0.02f, size.height * 0.9f))
+                }
+                .statusBarsPadding().padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 22.dp)
         ) {
             Box(
-                Modifier.align(Alignment.CenterStart).size(38.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.18f)).clickable { onBack() },
+                Modifier.size(38.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.18f)).clickable { onBack() },
                 contentAlignment = Alignment.Center
             ) { Icon(ArrowBackIcon, null, tint = Color.White, modifier = Modifier.size(18.dp)) }
-            // ชื่อแบรนด์: Nimit ตัวใหญ่ + delivery ตัวเล็ก (ฟอนต์/น้ำหนักเดียวกัน)
-            Text(
-                buildAnnotatedString {
-                    withStyle(SpanStyle(fontSize = 30.sp, fontWeight = FontWeight.ExtraBold)) { append("Nimit") }
-                    withStyle(SpanStyle(fontSize = 16.sp, fontWeight = FontWeight.ExtraBold)) { append(" delivery") }
-                },
-                color = Color.White
-            )
+            Column(Modifier.fillMaxWidth().padding(top = 6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                // ชื่อแบรนด์ตัวหนาเอียง: Nimit ใหญ่ + Delivery เล็กกว่า (ฟอนต์เดียวกัน)
+                Text(
+                    buildAnnotatedString {
+                        withStyle(SpanStyle(fontSize = 40.sp, fontWeight = FontWeight.Black, fontStyle = FontStyle.Italic, letterSpacing = (-1).sp)) { append("Nimit") }
+                        withStyle(SpanStyle(fontSize = 24.sp, fontWeight = FontWeight.Black, fontStyle = FontStyle.Italic, letterSpacing = (-0.5).sp)) { append(" Delivery") }
+                    },
+                    color = Color.White
+                )
+                Spacer(Modifier.height(14.dp))
+                Text(title, fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = Color.White)
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "ฉบับที่ $version", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White,
+                    modifier = Modifier.clip(RoundedCornerShape(20.dp)).background(Color.White.copy(alpha = 0.2f)).padding(horizontal = 12.dp, vertical = 4.dp)
+                )
+            }
         }
-        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 20.dp)) {
-            Text(title, fontSize = 26.sp, fontWeight = FontWeight.ExtraBold, color = C.Text)
-            Text("ฉบับที่ $version", fontSize = 14.sp, color = C.Subtext, modifier = Modifier.padding(top = 6.dp, bottom = 14.dp))
-            val shape = RoundedCornerShape(16.dp)
-            Column(Modifier.fillMaxWidth().clip(shape).background(Color.White).border(1.dp, Color(0xFFE5E7EB), shape).padding(20.dp)) {
-                sections.forEachIndexed { i, s ->
-                    if (i > 0) Spacer(Modifier.height(22.dp))
-                    Text(s.title, fontSize = 17.sp, fontWeight = FontWeight.ExtraBold, color = C.Text)
-                    Spacer(Modifier.height(8.dp))
-                    s.lines.forEach { l ->
-                        Text("- $l", fontSize = 15.sp, lineHeight = 24.sp, color = C.Text.copy(alpha = 0.85f), modifier = Modifier.padding(bottom = 4.dp))
+        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(start = 16.dp, end = 16.dp, top = 18.dp, bottom = 24.dp)) {
+            val shape = RoundedCornerShape(18.dp)
+            sections.forEach { sec ->
+                val m: MatchResult? = Regex("^(\\d+)\\.\\s*(.*)$").find(sec.title)
+                Column(Modifier.fillMaxWidth().padding(bottom = 12.dp).shadow(2.dp, shape).clip(shape).background(Color.White).padding(18.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (m != null) {
+                            Box(Modifier.size(28.dp).clip(CircleShape).background(C.PrimaryLight), contentAlignment = Alignment.Center) {
+                                Text(m.groupValues[1], fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = C.Primary)
+                            }
+                            Spacer(Modifier.width(10.dp))
+                        }
+                        Text(if (m != null) m.groupValues[2] else sec.title, fontSize = 16.sp, fontWeight = FontWeight.ExtraBold, color = C.Text, modifier = Modifier.weight(1f))
+                    }
+                    Spacer(Modifier.height(10.dp))
+                    sec.lines.forEach { l ->
+                        Row(Modifier.padding(bottom = 6.dp)) {
+                            Box(Modifier.padding(top = 9.dp, end = 10.dp).size(6.dp).clip(CircleShape).background(C.Primary.copy(alpha = 0.55f)))
+                            Text(l, fontSize = 14.5.sp, lineHeight = 22.sp, color = C.Text.copy(alpha = 0.85f), modifier = Modifier.weight(1f))
+                        }
                     }
                 }
             }
-            Spacer(Modifier.height(20.dp))
-            ContactAdmin()
-            Spacer(Modifier.height(24.dp))
+            Column(
+                Modifier.fillMaxWidth().shadow(2.dp, shape).clip(shape).background(Color.White).padding(18.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text("มีข้อสงสัยเกี่ยวกับเงื่อนไขหรือข้อมูลของคุณ?", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = C.Text)
+                Spacer(Modifier.height(10.dp))
+                ContactAdmin()
+            }
         }
     }
 }
