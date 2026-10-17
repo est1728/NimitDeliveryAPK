@@ -427,15 +427,15 @@ fun ShopsScreen(session: Session, onOpenShop: (String, String) -> Unit, onNaviga
             Box(Modifier.fillMaxSize().background(N.B900.copy(alpha = 0.45f)).clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { sidebar = false })
         }
         AnimatedVisibility(sidebar, Modifier.align(Alignment.CenterEnd), enter = slideInHorizontally { it }, exit = slideOutHorizontally { it }) {
-            Column(Modifier.width(284.dp).fillMaxHeight().shadow(16.dp).background(Color.White)) {
+            Column(Modifier.width(310.dp).fillMaxHeight().shadow(16.dp).background(Color.White)) {
                 Row(Modifier.fillMaxWidth().background(Brush.linearGradient(listOf(N.B900, N.B700))).statusBarsPadding().padding(horizontal = 16.dp, vertical = 16.dp), verticalAlignment = Alignment.CenterVertically) {
                     Logo(40)
                     Spacer(Modifier.width(10.dp))
                     Column(Modifier.weight(1f)) {
-                        Text("Nimit Delivery", fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
-                        Text("เมนูของฉัน", fontSize = 12.sp, color = Color.White.copy(alpha = 0.8f))
+                        Text("Nimit Delivery", fontSize = 19.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                        Text("เมนูของฉัน", fontSize = 14.sp, color = Color.White.copy(alpha = 0.85f))
                     }
-                    Text("✕", color = Color.White, fontSize = 18.sp, modifier = Modifier.clickable { sidebar = false }.padding(8.dp))
+                    Text("✕", color = Color.White, fontSize = 22.sp, modifier = Modifier.clickable { sidebar = false }.padding(8.dp))
                 }
                 SidebarNotifRow()
                 SbItem("แก้ไขที่อยู่", customer.optString("address").ifEmpty { "เพิ่มที่อยู่จัดส่ง" }) { sidebar = false; onNavigate("address") }
@@ -522,10 +522,10 @@ private fun cartCount(session: Session): Int = try {
 
 @Composable private fun SbItem(title: String, sub: String, onClick: () -> Unit) {
     Column(Modifier.fillMaxWidth().clickable { onClick() }) {
-        Row(Modifier.padding(horizontal = 18.dp, vertical = 11.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.padding(horizontal = 18.dp, vertical = 15.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text(title, fontSize = 13.5.sp, fontWeight = FontWeight.Bold, color = N.Ink900)
-                Text(sub, fontSize = 11.sp, color = N.Ink500, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(title, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = N.Ink900)
+                Text(sub, fontSize = 13.sp, color = N.Ink500, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             PathIcon(P.CHEVRON, N.Ink300, 18.dp)
         }

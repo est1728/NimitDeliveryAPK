@@ -21,7 +21,7 @@ import org.json.JSONObject
 
 // หน้าที่ยังไม่ได้แปลง (ทยอยเปลี่ยนเป็นหน้าจริงทีละหน้า)
 private val pendingRoutes = listOf(
-    "address", "review",
+    "review",
 )
 
 @Composable
@@ -69,6 +69,16 @@ fun NimitNav() {
         }
         composable("register") {
             RegisterScreen(session, onBack = { nav.popBackStack() }, onDone = { toShops() })
+        }
+        composable("address") {
+            // กลับมาหน้าร้านแล้วโหลดใหม่ เพื่อให้ sidebar/ที่อยู่อัปเดตตามที่แก้
+            val leave: () -> Unit = {
+                session.newCustomer = null
+                if (nav.previousBackStackEntry?.destination?.route == "shops") {
+                    nav.navigate("shops") { popUpTo("shops") { inclusive = true } }
+                } else if (!nav.popBackStack()) nav.navigate("shops")
+            }
+            AddressScreen(session, onBack = leave, onNext = leave)
         }
         composable("shops") {
             ShopsScreen(

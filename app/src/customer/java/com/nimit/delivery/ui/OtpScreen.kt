@@ -2,9 +2,18 @@ package com.nimit.delivery.ui
 
 import android.app.Activity
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
@@ -51,7 +60,7 @@ fun OtpScreen(session: Session, onBack: () -> Unit, onDone: (registered: Boolean
             if (t.isSuccessful) {
                 session.verifiedPhone = phone
                 scope.launch { val reg = LoginFlow.route(session, phone); busy = false; onDone(reg) }
-            } else { busy = false; msg = "รหัสไม่ถูกต้อง กรุณาลองใหม่" }
+            } else { busy = false; code = ""; msg = "รหัสไม่ถูกต้อง กรุณาลองใหม่" }
         }
     }
 
@@ -79,6 +88,8 @@ fun OtpScreen(session: Session, onBack: () -> Unit, onDone: (registered: Boolean
         signIn(PhoneAuthProvider.getCredential(id, code))
     }
 
+    LaunchedEffect(code) { if (code.length == 6 && verificationId != null && !busy) verify() }
+
     Column(Modifier.fillMaxSize().background(Color.White)) {
         TopBar("ยืนยันเบอร์โทรศัพท์", onBack)
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp)) {
@@ -86,12 +97,7 @@ fun OtpScreen(session: Session, onBack: () -> Unit, onDone: (registered: Boolean
             Spacer(Modifier.height(6.dp))
             Text("เราส่งรหัสไปที่ $phone", fontSize = 14.sp, color = C.Subtext)
             Spacer(Modifier.height(20.dp))
-            NimitInput(
-                value = code, onChange = { code = it.filter(Char::isDigit).take(6); msg = null },
-                placeholder = "------", height = 56.dp, fontSize = 22,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword, imeAction = ImeAction.Done),
-                keyboardActions = KeyboardActions(onDone = { verify() })
-            )
+            OtpBoxes(code, { code = it; msg = null }) { verify() }
             msg?.let { Text(it, fontSize = 13.sp, color = Color(0xFFE53935), modifier = Modifier.padding(top = 6.dp)) }
             Spacer(Modifier.height(20.dp))
             GradientButton(if (busy) "กำลังตรวจสอบ..." else "ยืนยัน", enabled = code.length == 6 && !busy && verificationId != null) { verify() }
@@ -105,4 +111,29 @@ fun OtpScreen(session: Session, onBack: () -> Unit, onDone: (registered: Boolean
             )
         }
     }
+}
+
+@Composable
+private fun OtpBoxes(code: String, onChange: (String) -> Unit, onDone: () -> Unit) {
+    val focus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { try { focus.requestFocus() } catch (e: Exception) { } }
+    BasicTextField(
+        value = code, onValueChange = { v: String -> onChange(v.filter { c -> c.isDigit() }.take(6)) },
+        modifier = Modifier.fillMaxWidth().focusRequester(focus),
+        textStyle = TextStyle(color = Color.Transparent), cursorBrush = SolidColor(Color.Transparent),
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
+        keyboardActions = KeyboardActions(onDone = { onDone() }),
+        decorationBox = {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                for (i in 0 until 6) {
+                    val active = i == code.length || (i == 5 && code.length == 6)
+                    Box(
+                        Modifier.weight(1f).height(54.dp).clip(RoundedCornerShape(12.dp)).background(C.Gray)
+                            .border(if (active) 2.dp else 1.dp, if (active) C.Primary else Color(0xFFE2E8F0), RoundedCornerShape(12.dp)),
+                        contentAlignment = Alignment.Center
+                    ) { Text(if (i < code.length) code[i].toString() else "", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = C.Text) }
+                }
+            }
+        }
+    )
 }
