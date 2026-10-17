@@ -2,10 +2,12 @@ package com.nimit.delivery.ui
 
 import android.app.Activity
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -15,6 +17,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -29,7 +32,11 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -79,7 +86,7 @@ fun ShopLoginScreen(onLoggedIn: (ShopInfo) -> Unit) {
         auth.signInWithCredential(cred).addOnCompleteListener { t ->
             loading = false
             if (t.isSuccessful) { otpMode = false; finishLogin(pending) }
-            else error = "รหัสไม่ถูกต้อง กรุณาลองใหม่"
+            else { error = "รหัสไม่ถูกต้อง กรุณาลองใหม่"; code = "" }
         }
     }
 
@@ -88,7 +95,16 @@ fun ShopLoginScreen(onLoggedIn: (ShopInfo) -> Unit) {
         val intl: String = "+66" + otpPhone.removePrefix("0")
         val cb = object : PhoneAuthProvider.OnVerificationStateChangedCallbacks() {
             override fun onVerificationCompleted(c: PhoneAuthCredential) { signIn(c) }
-            override fun onVerificationFailed(e: FirebaseException) { loading = false; error = "ส่งรหัสไม่สำเร็จ: " + (e.localizedMessage ?: "") }
+            override fun onVerificationFailed(e: FirebaseException) {
+                loading = false
+                val ec: String = (e as? com.google.firebase.auth.FirebaseAuthException)?.errorCode ?: ""
+                error = when (ec) {
+                    "ERROR_OPERATION_NOT_ALLOWED" -> "ระบบส่ง OTP ยังไม่เปิดใช้งาน กรุณาติดต่อแอดมิน"
+                    "ERROR_TOO_MANY_REQUESTS" -> "ขอรหัสบ่อยเกินไป กรุณารอสักครู่แล้วลองใหม่"
+                    "ERROR_INVALID_PHONE_NUMBER" -> "เบอร์โทรไม่ถูกต้อง"
+                    else -> "ส่งรหัสไม่สำเร็จ: " + (e.localizedMessage ?: "")
+                }
+            }
             override fun onCodeSent(id: String, t: PhoneAuthProvider.ForceResendingToken) {
                 verificationId = id; resendToken = t; loading = false; countdown = 60
             }
@@ -107,6 +123,9 @@ fun ShopLoginScreen(onLoggedIn: (ShopInfo) -> Unit) {
         error = ""
         signIn(PhoneAuthProvider.getCredential(id, code))
     }
+
+    // กรอกครบ 6 หลักแล้วยืนยันให้เอง
+    LaunchedEffect(code) { if (otpMode && code.length == 6 && verificationId != null) verify() }
 
     fun submit() {
         if (loading) return
@@ -149,11 +168,7 @@ fun ShopLoginScreen(onLoggedIn: (ShopInfo) -> Unit) {
             if (otpMode) {
                 Text("กรอกรหัส OTP 6 หลัก", fontSize = 17.sp, fontWeight = FontWeight.ExtraBold, color = C.Text)
                 Text("เราส่งรหัสไปที่ $otpPhone", fontSize = 13.sp, color = C.Subtext)
-                NimitInput(
-                    code, { code = it.filter { c -> c.isDigit() }.take(6); error = "" }, "------",
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword, imeAction = ImeAction.Done),
-                    keyboardActions = KeyboardActions(onDone = { verify() })
-                )
+                OtpBoxes(code, { code = it; error = "" }, { verify() })
                 if (error.isNotEmpty()) Text(error, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = ShopRed)
                 GradientButton(if (loading) "กำลังตรวจสอบ..." else "ยืนยัน", enabled = !loading && code.length == 6 && verificationId != null) { verify() }
                 Text(
@@ -190,4 +205,34 @@ fun ShopLoginScreen(onLoggedIn: (ShopInfo) -> Unit) {
             }
         }
     }
+}
+
+/** ช่องกรอก OTP 6 ช่อง (ช่องเดียวจริงๆ ซ่อนอยู่ แล้ววาดเป็นกล่อง 6 กล่อง) แตะที่กล่องเพื่อเปิดคีย์บอร์ด วางรหัสได้ */
+@Composable
+private fun OtpBoxes(code: String, onChange: (String) -> Unit, onDone: () -> Unit) {
+    val focus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { try { focus.requestFocus() } catch (e: Exception) { } }
+    BasicTextField(
+        value = code,
+        onValueChange = { v: String -> onChange(v.filter { c -> c.isDigit() }.take(6)) },
+        modifier = Modifier.fillMaxWidth().focusRequester(focus),
+        textStyle = TextStyle(color = Color.Transparent),
+        cursorBrush = SolidColor(Color.Transparent),
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
+        keyboardActions = KeyboardActions(onDone = { onDone() }),
+        decorationBox = {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                for (i in 0 until 6) {
+                    val active: Boolean = i == code.length || (i == 5 && code.length == 6)
+                    Box(
+                        Modifier.weight(1f).height(54.dp).clip(RoundedCornerShape(12.dp)).background(C.Gray)
+                            .border(if (active) 2.dp else 1.dp, if (active) C.Primary else Color(0xFFE2E8F0), RoundedCornerShape(12.dp)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(if (i < code.length) code[i].toString() else "", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = C.Text)
+                    }
+                }
+            }
+        }
+    )
 }
