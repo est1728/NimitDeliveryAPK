@@ -98,8 +98,9 @@ fun ShopLoginScreen(onLoggedIn: (ShopInfo) -> Unit) {
             override fun onVerificationFailed(e: FirebaseException) {
                 loading = false
                 val ec: String = (e as? com.google.firebase.auth.FirebaseAuthException)?.errorCode ?: ""
+                val detail: String = "\n[" + ec + "] " + (e.localizedMessage ?: "")
                 error = when (ec) {
-                    "ERROR_OPERATION_NOT_ALLOWED" -> "ระบบส่ง OTP ยังไม่เปิดใช้งาน กรุณาติดต่อแอดมิน"
+                    "ERROR_OPERATION_NOT_ALLOWED" -> "ระบบส่ง OTP ยังไม่เปิดใช้งาน กรุณาติดต่อแอดมิน" + detail
                     "ERROR_TOO_MANY_REQUESTS" -> "ขอรหัสบ่อยเกินไป กรุณารอสักครู่แล้วลองใหม่"
                     "ERROR_INVALID_PHONE_NUMBER" -> "เบอร์โทรไม่ถูกต้อง"
                     else -> "ส่งรหัสไม่สำเร็จ: " + (e.localizedMessage ?: "")
