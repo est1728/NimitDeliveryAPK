@@ -1,8 +1,10 @@
 package com.nimit.delivery.data
 
+import com.google.firebase.Timestamp
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.Query
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.tasks.await
@@ -11,6 +13,28 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
+import java.text.SimpleDateFormat
+import java.util.Calendar
+import java.util.Date
+import java.util.Locale
+import java.util.TimeZone
+
+data class DevBroadcast(
+    val id: String,
+    val title: String,
+    val body: String,
+    val role: String,
+    val scope: String,
+    val zoneId: String,
+    val zoneName: String,
+    val person: String,
+    val repeat: String,
+    val timeOfDay: String,
+    val nextRunMillis: Long,
+    val status: String,
+    val lastRunMillis: Long,
+    val lastResult: String
+)
 
 // ส่งแจ้งเตือนผ่านเซิร์ฟเวอร์เดิม: ใช้รูปแบบเดียวกับหน้าทดสอบเดิม (tokens, title, body, url)
 object DevNotify {
@@ -146,6 +170,148 @@ object DevNotify {
             throw e
         } catch (e: Exception) {
             false
+        }
+    }
+
+    // ===== ข้อความที่ตั้งเวลา/บันทึกไว้ (devBroadcasts) =====
+    // once/daily: เซิร์ฟเวอร์ (api/run-broadcasts) ตรวจทุกนาทีแล้วส่งเมื่อถึงเวลา | manual: แอปส่งเองเมื่อกดปุ่ม
+    private val bkk: TimeZone = TimeZone.getTimeZone("Asia/Bangkok")
+
+    fun validTime(t: String): Boolean = Regex("^([01]?[0-9]|2[0-3]):[0-5][0-9]$").matches(t.trim())
+
+    fun normTime(t: String): String {
+        val p = t.trim().split(":")
+        if (p.size != 2) return t.trim()
+        val h = p[0].toIntOrNull() ?: return t.trim()
+        return String.format(Locale.US, "%02d:%s", h, p[1])
+    }
+
+    /** เวลาถัดไปของ HH:mm ตามเวลาไทย (มิลลิวินาที) เรียกเมื่อ validTime ผ่านแล้วเท่านั้น */
+    fun nextDaily(t: String): Long {
+        val p = normTime(t).split(":")
+        val c = Calendar.getInstance(bkk)
+        c.set(Calendar.HOUR_OF_DAY, p[0].toInt())
+        c.set(Calendar.MINUTE, p[1].toInt())
+        c.set(Calendar.SECOND, 0)
+        c.set(Calendar.MILLISECOND, 0)
+        if (c.timeInMillis <= System.currentTimeMillis()) c.add(Calendar.DAY_OF_YEAR, 1)
+        return c.timeInMillis
+    }
+
+    /** วว/ดด/ปปปป (รับปี พ.ศ. ด้วย) + ชช:นน เวลาไทย -> มิลลิวินาที หรือ null ถ้าไม่ถูกต้อง */
+    fun parseOnce(date: String, time: String): Long? {
+        if (!validTime(time)) return null
+        val d = date.trim().split("/")
+        if (d.size != 3) return null
+        val dd = d[0].toIntOrNull() ?: return null
+        val mm = d[1].toIntOrNull() ?: return null
+        var yy = d[2].toIntOrNull() ?: return null
+        if (yy > 2400) yy -= 543
+        val f = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.US)
+        f.timeZone = bkk
+        f.isLenient = false
+        return try {
+            f.parse(String.format(Locale.US, "%02d/%02d/%04d %s", dd, mm, yy, normTime(time)))?.time
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    fun fmt(ms: Long): String {
+        if (ms <= 0L) return "-"
+        val f = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.US)
+        f.timeZone = bkk
+        return f.format(Date(ms))
+    }
+
+    suspend fun saveBroadcast(
+        role: String, scope: String, zoneId: String, zoneName: String, person: String,
+        title: String, body: String, repeat: String, runAtMillis: Long, timeOfDay: String
+    ): String? {
+        val email = DevRepo.currentEmail() ?: return "ยังไม่ได้เข้าสู่ระบบ"
+        val m = hashMapOf<String, Any>(
+            "title" to title,
+            "body" to body,
+            "role" to role,
+            "scope" to scope,
+            "zoneId" to zoneId,
+            "zoneName" to zoneName,
+            "person" to person.trim(),
+            "repeat" to repeat,
+            "timeOfDay" to timeOfDay,
+            "status" to "active",
+            "createdBy" to email,
+            "createdAt" to FieldValue.serverTimestamp()
+        )
+        if (repeat != "manual") m["nextRunAt"] = Timestamp(Date(runAtMillis))
+        return try {
+            FirebaseFirestore.getInstance().collection("devBroadcasts").add(m).await()
+            null
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            "บันทึกไม่สำเร็จ (ตรวจสอบอินเทอร์เน็ตและสิทธิ์เขียนข้อมูล)"
+        }
+    }
+
+    suspend fun listBroadcasts(): List<DevBroadcast> {
+        val snap = FirebaseFirestore.getInstance().collection("devBroadcasts")
+            .orderBy("createdAt", Query.Direction.DESCENDING).limit(50).get().await()
+        return snap.documents.map { d ->
+            DevBroadcast(
+                id = d.id,
+                title = d.getString("title") ?: "",
+                body = d.getString("body") ?: "",
+                role = d.getString("role") ?: "shop",
+                scope = d.getString("scope") ?: "all",
+                zoneId = d.getString("zoneId") ?: "",
+                zoneName = d.getString("zoneName") ?: "",
+                person = d.getString("person") ?: "",
+                repeat = d.getString("repeat") ?: "manual",
+                timeOfDay = d.getString("timeOfDay") ?: "",
+                nextRunMillis = d.getTimestamp("nextRunAt")?.toDate()?.time ?: 0L,
+                status = d.getString("status") ?: "active",
+                lastRunMillis = d.getTimestamp("lastRunAt")?.toDate()?.time ?: 0L,
+                lastResult = d.getString("lastResult") ?: ""
+            )
+        }
+    }
+
+    suspend fun setBroadcastStatus(id: String, status: String, nextRunMillis: Long?): Boolean {
+        val upd = hashMapOf<String, Any>("status" to status)
+        if (nextRunMillis != null) upd["nextRunAt"] = Timestamp(Date(nextRunMillis))
+        return try {
+            FirebaseFirestore.getInstance().collection("devBroadcasts").document(id).update(upd).await()
+            true
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    suspend fun deleteBroadcast(id: String): Boolean {
+        return try {
+            FirebaseFirestore.getInstance().collection("devBroadcasts").document(id).delete().await()
+            true
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    suspend fun markSent(id: String, ok: Boolean, count: Int) {
+        try {
+            FirebaseFirestore.getInstance().collection("devBroadcasts").document(id).update(
+                mapOf(
+                    "lastRunAt" to FieldValue.serverTimestamp(),
+                    "lastResult" to ((if (ok) "ส่งถึง " else "ส่งไม่สำเร็จ ") + count + " เครื่อง")
+                )
+            ).await()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
         }
     }
 }
