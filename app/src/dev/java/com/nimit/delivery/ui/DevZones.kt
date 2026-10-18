@@ -113,7 +113,8 @@ fun DevZonesScreen() {
                 linkInitial = setOf(detailF.id)
                 showLink = true
             },
-            onUnlink = { unlinkTarget = detailF }
+            onUnlink = { unlinkTarget = detailF },
+            onReload = { tick++ }
         )
     } else {
     Row(Modifier.fillMaxWidth().padding(bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -431,8 +432,10 @@ private fun DevZoneDetailScreen(
     onBack: () -> Unit,
     onEdit: () -> Unit,
     onLink: () -> Unit,
-    onUnlink: () -> Unit
+    onUnlink: () -> Unit,
+    onReload: () -> Unit
 ) {
+    var showMap by remember { mutableStateOf(false) }
     var detail by remember { mutableStateOf<DevZoneDetail?>(null) }
     var err by remember { mutableStateOf(false) }
     var tick by remember { mutableStateOf(0) }
@@ -490,6 +493,11 @@ private fun DevZoneDetailScreen(
         DevInfoRow("รหัสเข้าใช้", if (f.hasCode) "ตั้งแล้ว" else "ยังไม่ตั้ง")
         DevInfoRow("ค่าแฟรนไชส์/เดือน", if (f.monthlyFee > 0) "฿" + String.format("%,.0f", f.monthlyFee) else "-")
         DevInfoRow("เขตบนแผนที่", if (f.zonePoints >= 3) "มีเขตแล้ว (" + f.zonePoints + " จุด)" else "ยังไม่กำหนด")
+        Text(
+            if (f.zonePoints >= 3) "แก้ไขเขตบนแผนที่" else "กำหนดเขตบนแผนที่",
+            fontSize = 12.5.sp, fontWeight = FontWeight.ExtraBold, color = DevC.P,
+            modifier = Modifier.padding(top = 6.dp).clip(RoundedCornerShape(8.dp)).clickable { showMap = true }.padding(vertical = 4.dp, horizontal = 2.dp)
+        )
     }
 
     DevCard {
@@ -558,6 +566,18 @@ private fun DevZoneDetailScreen(
             }
         }
     }
+    if (showMap) {
+        DevZoneMapEditor(
+            f = f, all = all,
+            onDismiss = { showMap = false },
+            onSaved = { m ->
+                showMap = false
+                moveNotice = m
+                moveErr = false
+                onReload()
+            }
+        )
+    }
     val ms = moveShop
     if (ms != null) {
         DevMoveShopDialog(
@@ -568,6 +588,7 @@ private fun DevZoneDetailScreen(
                 moveNotice = msg
                 moveErr = false
                 tick++
+                onReload()
             }
         )
     }
@@ -695,6 +716,7 @@ private fun DevAuditLine(a: DevAuditItem) {
         "edit_zone" -> "แก้ไขเขต"
         "move_shop" -> "ย้ายร้าน"
         "copy_shop" -> "คัดลอกร้าน"
+        "set_zone" -> "กำหนดเขตบนแผนที่"
         else -> a.action
     }
     val time = if (a.atMillis <= 0L) "กำลังบันทึก"

@@ -20,7 +20,8 @@ private val devAuditFields = listOf(
     "province" to "พื้นที่",
     "phone" to "เบอร์โทร",
     "monthlyFee" to "ค่าแฟรนไชส์/เดือน",
-    "status" to "สถานะ"
+    "status" to "สถานะ",
+    "zone" to "เขตบนแผนที่"
 )
 
 private fun devAuditValue(k: String, v: Any?): String {
@@ -46,7 +47,7 @@ private fun devAuditDetails(
             (if (action == "move_shop") "ย้ายจาก " else "คัดลอกจาก ") + from + " → " + to
         )
     }
-    if (action != "create_zone" && action != "edit_zone") return emptyList()
+    if (action != "create_zone" && action != "edit_zone" && action != "set_zone") return emptyList()
     val out = ArrayList<String>()
     devAuditFields.forEach { (k, label) ->
         if (after.containsKey(k)) out.add(label + ": " + devAuditValue(k, before[k]) + " → " + devAuditValue(k, after[k]))

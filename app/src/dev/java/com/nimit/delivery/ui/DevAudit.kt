@@ -33,6 +33,7 @@ private fun devAuditLabel(a: String): String = when (a) {
     "create_zone" -> "เพิ่มเขต"
     "edit_zone" -> "แก้ไขเขต"
     "move_shop" -> "ย้ายร้าน"
+    "set_zone" -> "กำหนดเขตบนแผนที่"
     "copy_shop" -> "คัดลอกร้าน"
     else -> a
 }
@@ -102,7 +103,7 @@ private fun DevAuditCard(a: DevAuditItem) {
             else if (a.action == "link_zones") DevBadge(devAuditLabel(a.action), DevC.PL, DevC.P)
             else if (a.action == "create_zone") DevBadge(devAuditLabel(a.action), DevC.GnL, DevC.Gn)
             else if (a.action == "edit_zone") DevBadge(devAuditLabel(a.action), DevC.OL, DevC.O)
-            else if (a.action == "move_shop" || a.action == "copy_shop") DevBadge(devAuditLabel(a.action), DevC.PL, DevC.P)
+            else if (a.action == "move_shop" || a.action == "copy_shop" || a.action == "set_zone") DevBadge(devAuditLabel(a.action), DevC.PL, DevC.P)
             else DevBadge(devAuditLabel(a.action), Color(0xFFF1F5F9), DevC.S)
         }
         a.details.forEach { line ->
