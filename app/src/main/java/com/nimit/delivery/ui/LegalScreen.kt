@@ -43,17 +43,17 @@ const val ADMIN_LINE_URL: String = "https://lin.ee/6rWI6rH"
 
 @Composable
 fun LegalScreen(title: String, version: String, sections: List<LegalSection>, onBack: () -> Unit) {
-    Column(Modifier.fillMaxSize().background(C.Gray)) {
-        val hs = RoundedCornerShape(bottomStart = 30.dp, bottomEnd = 30.dp)
-        Box(
-            Modifier.fillMaxWidth().clip(hs)
-                .background(Brush.linearGradient(listOf(Color(0xFF1560C8), C.Primary, C.PrimaryDark)))
-                .drawBehind {
-                    drawCircle(Color.White.copy(alpha = 0.07f), radius = 110.dp.toPx(), center = Offset(size.width * 0.95f, 0f))
-                    drawCircle(Color.White.copy(alpha = 0.06f), radius = 80.dp.toPx(), center = Offset(size.width * 0.02f, size.height * 0.9f))
-                }
-                .statusBarsPadding().padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 22.dp)
-        ) {
+    // พื้นหลังไล่สีน้ำเงินเต็มจอ (เริ่มที่สีเดียวกับแถบสถานะ ไม่มีรอยต่อ) หัวข้ออยู่บนพื้นหลัง การ์ดเนื้อหาเลื่อนอยู่ด้านบน
+    Box(
+        Modifier.fillMaxSize()
+            .background(Brush.verticalGradient(listOf(C.Primary, C.PrimaryDark)))
+            .drawBehind {
+                drawCircle(Color.White.copy(alpha = 0.07f), radius = 130.dp.toPx(), center = Offset(size.width * 0.95f, 40.dp.toPx()))
+                drawCircle(Color.White.copy(alpha = 0.05f), radius = 100.dp.toPx(), center = Offset(size.width * 0.02f, size.height * 0.55f))
+            }
+    ) {
+    Column(Modifier.fillMaxSize()) {
+        Box(Modifier.fillMaxWidth().statusBarsPadding().padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 16.dp)) {
             Box(
                 Modifier.size(38.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.18f)).clickable { onBack() },
                 contentAlignment = Alignment.Center
@@ -76,7 +76,7 @@ fun LegalScreen(title: String, version: String, sections: List<LegalSection>, on
                 )
             }
         }
-        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(start = 16.dp, end = 16.dp, top = 18.dp, bottom = 24.dp)) {
+        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 24.dp)) {
             val shape = RoundedCornerShape(18.dp)
             sections.forEach { sec ->
                 val m: MatchResult? = Regex("^(\\d+)\\.\\s*(.*)$").find(sec.title)
@@ -108,6 +108,7 @@ fun LegalScreen(title: String, version: String, sections: List<LegalSection>, on
                 ContactAdmin()
             }
         }
+    }
     }
 }
 
