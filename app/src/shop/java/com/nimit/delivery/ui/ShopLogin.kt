@@ -196,9 +196,14 @@ fun ShopLoginScreen(onTerms: () -> Unit, onPrivacy: () -> Unit, onLoggedIn: (Sho
                 Text("เบอร์นี้มีหลายร้าน", fontSize = 17.sp, fontWeight = FontWeight.ExtraBold, color = C.Text)
                 Text("เลือกร้านที่ต้องการจัดการ", fontSize = 13.sp, color = C.Subtext)
                 for (s in choices) {
-                    Box(
+                    val dup: Boolean = choices.count { c -> c.name == s.name } > 1
+                    val sub: String = if (!dup) "" else if (s.sub.isNotEmpty()) s.sub else "รหัสร้าน …" + s.id.takeLast(4)
+                    Column(
                         Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(C.Gray).clickable { onLoggedIn(s) }.padding(horizontal = 16.dp, vertical = 14.dp)
-                    ) { Text(s.name, fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, color = C.Text) }
+                    ) {
+                        Text(s.name, fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, color = C.Text)
+                        if (sub.isNotEmpty()) Text(sub, fontSize = 12.sp, color = C.Subtext, maxLines = 2, modifier = Modifier.padding(top = 2.dp))
+                    }
                 }
                 Text(
                     "ย้อนกลับ", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = C.Primary, textAlign = TextAlign.Center,

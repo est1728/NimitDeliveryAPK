@@ -75,7 +75,8 @@ fun shopOpenChannelSettings(ctx: Context) {
 }
 
 fun shopOpenBatterySettings(ctx: Context) {
-    go(ctx, Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
+    // ขึ้นหน้าต่างระบบ "อนุญาตให้แอพทำงานเบื้องหลังตลอดเวลา?" ของแอพนี้โดยตรง ถ้าเครื่องไม่รองรับ → หน้าข้อมูลแอพ (มีเมนูแบตเตอรี่)
+    go(ctx, Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:" + ctx.packageName)))
 }
 
 /** อ่านสถานะใหม่ทุกครั้งที่กลับเข้าแอพ (เช่น กลับจากหน้าตั้งค่า) */
@@ -117,7 +118,7 @@ fun ShopReadyGate() {
     } else if (asked && r.notif && r.channel && !r.battery && !laterBattery) {
         ReadyDialog(
             title = "ตั้งแอพให้ไม่ถูกจำกัดแบตเตอรี่",
-            text = "เครื่องบางรุ่นปิดแอพที่อยู่เบื้องหลังเพื่อประหยัดแบตเตอรี่ ทำให้เสียงเตือนออเดอร์ไม่ดังตอนปิดจอ กดปุ่มด้านล่างแล้วเลือก Nimit Shop ตั้งเป็น \"ไม่จำกัด\" หรือ \"ไม่ปรับให้เหมาะสม\"",
+            text = "เครื่องบางรุ่นปิดแอพที่อยู่เบื้องหลังเพื่อประหยัดแบตเตอรี่ ทำให้เสียงเตือนออเดอร์ไม่ดังตอนปิดจอ กดปุ่มด้านล่างแล้วเลือก \"อนุญาต\" ในหน้าต่างที่ขึ้นมา",
             ok = "ไปหน้าตั้งค่า", later = "ไว้ทีหลัง",
             onOk = { shopOpenBatterySettings(ctx) },
             onLater = { laterBattery = true }

@@ -146,13 +146,13 @@ private fun ContactAdmin() {
     Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
         Text("ติดต่อผู้ดูแลระบบ", fontSize = 12.sp, color = C.Subtext)
         if (ADMIN_LINE_URL.isNotBlank()) {
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(6.dp))
             Box(
-                Modifier.fillMaxWidth().height(44.dp).clip(RoundedCornerShape(12.dp)).background(Color(0xFF06C755)).clickable {
+                Modifier.height(32.dp).clip(RoundedCornerShape(16.dp)).border(1.dp, Color(0xFF06C755), RoundedCornerShape(16.dp)).clickable {
                     try { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(ADMIN_LINE_URL))) } catch (e: Exception) { }
-                },
+                }.padding(horizontal = 16.dp),
                 contentAlignment = Alignment.Center
-            ) { Text("ทักไลน์แอดมิน", fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, color = Color.White) }
+            ) { Text("ทักไลน์แอดมิน", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF06A64A)) }
         }
     }
 }

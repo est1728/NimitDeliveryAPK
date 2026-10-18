@@ -14,7 +14,7 @@ import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 
-data class ShopInfo(val id: String, val name: String, val phone: String)
+data class ShopInfo(val id: String, val name: String, val phone: String, val sub: String = "")
 
 /** จำร้านที่ล็อกอินไว้ในเครื่อง */
 class ShopSession(ctx: Context) {
@@ -47,7 +47,13 @@ object ShopRepo {
         if (docs.isEmpty()) {
             docs = col.get().await().documents.filter { normPhone(it.get("phone")?.toString() ?: "") == p }
         }
-        return docs.map { ShopInfo(it.id, it.getString("name") ?: "ร้านค้า", it.get("phone")?.toString() ?: p) }
+        return docs.map {
+            // ข้อความกำกับสาขา ใช้ตอนเบอร์เดียวมีหลายร้านชื่อซ้ำกัน: ฟิลด์ branch ถ้ามี ไม่งั้นใช้ที่อยู่
+            val br: String = it.getString("branch")?.trim() ?: ""
+            val ad: String = it.getString("address")?.trim() ?: ""
+            val sub: String = if (br.isNotEmpty()) "สาขา $br" else ad
+            ShopInfo(it.id, it.getString("name") ?: "ร้านค้า", it.get("phone")?.toString() ?: p, sub)
+        }
     }
 }
 
