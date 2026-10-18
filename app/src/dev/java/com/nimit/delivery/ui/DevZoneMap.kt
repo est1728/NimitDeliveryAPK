@@ -321,6 +321,17 @@ fun DevZoneMapEditor(f: DevFranchise, all: List<DevFranchise>, onDismiss: () -> 
                     onMove = { i, la, lo -> if (i in pts.indices) pts[i] = DevPt(la, lo) },
                     modifier = Modifier.fillMaxSize()
                 )
+                // เครดิตแหล่งแผนที่ (ข้อกำหนดของ Esri / OpenStreetMap)
+                Text(
+                    if (sat) "Powered by Esri · Esri, Maxar, Earthstar Geographics, and the GIS User Community" else "© OpenStreetMap contributors",
+                    fontSize = 9.5.sp, color = Color(0xFF334155), maxLines = 2,
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(4.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(Color.White.copy(alpha = 0.8f))
+                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                )
                 if (!loaded) {
                     Text(
                         "กำลังโหลดเขต...", fontSize = 12.sp, color = DevC.S, fontWeight = FontWeight.Bold,

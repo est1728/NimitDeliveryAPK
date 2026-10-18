@@ -1,5 +1,5 @@
 #!/bin/bash
-# กำหนดเขตบนแผนที่ (วาดเอง + ค้นเส้นอำเภอ/ตำบลจาก OpenStreetMap) + ตรวจการทับซ้อน + ประวัติ (เขียนทับ/เพิ่ม 5 ไฟล์ รันซ้ำได้)
+# กำหนดเขตบนแผนที่ (วาดเอง + ค้นเส้นอำเภอ/ตำบลจาก OpenStreetMap) + ตรวจการทับซ้อน + ประวัติ + เครดิตแผนที่ (เขียนทับ/เพิ่ม 5 ไฟล์ รันซ้ำได้)
 set -e
 D=app/src/dev/java/com/nimit/delivery
 [ -f "$D/ui/DevZones.kt" ] && grep -q "DevMoveShopDialog" "$D/ui/DevZones.kt" || { echo "หยุด: ต้องรัน dev-zone.sh และ dev-move.sh ก่อน และรันใน ~/nimit-customer"; exit 1; }
@@ -562,6 +562,17 @@ fun DevZoneMapEditor(f: DevFranchise, all: List<DevFranchise>, onDismiss: () -> 
                     onAdd = { la, lo -> pts.add(DevPt(la, lo)) },
                     onMove = { i, la, lo -> if (i in pts.indices) pts[i] = DevPt(la, lo) },
                     modifier = Modifier.fillMaxSize()
+                )
+                // เครดิตแหล่งแผนที่ (ข้อกำหนดของ Esri / OpenStreetMap)
+                Text(
+                    if (sat) "Powered by Esri · Esri, Maxar, Earthstar Geographics, and the GIS User Community" else "© OpenStreetMap contributors",
+                    fontSize = 9.5.sp, color = Color(0xFF334155), maxLines = 2,
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(4.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(Color.White.copy(alpha = 0.8f))
+                        .padding(horizontal = 6.dp, vertical = 2.dp)
                 )
                 if (!loaded) {
                     Text(
@@ -1739,5 +1750,5 @@ fun DevBadge(text: String, bg: Color, fg: Color) {
 KT_EOF
 echo "== ตรวจผล =="
 for f in data/DevZoneGeo.kt ui/DevZoneMap.kt data/DevAudit.kt ui/DevAudit.kt ui/DevZones.kt; do printf "%s  %s บรรทัด\n" "$f" "$(wc -l < "$D/$f")"; done
-grep -c "DevZoneMapEditor" "$D/ui/DevZones.kt" | sed "s/^/DevZones: DevZoneMapEditor = /"
+grep -c "Powered by Esri" "$D/ui/DevZoneMap.kt" | sed "s/^/DevZoneMap: เครดิต Esri = /"
 git status --short
