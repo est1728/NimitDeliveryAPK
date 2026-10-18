@@ -68,6 +68,10 @@ import com.nimit.delivery.data.ShopOrd
 import com.nimit.delivery.data.ShopStore
 import com.nimit.delivery.data.shopNextOpenTime
 import com.nimit.delivery.data.shopTime
+import com.nimit.delivery.data.shopAsMap
+import com.google.firebase.firestore.FieldValue
+import com.google.firebase.firestore.FirebaseFirestore
+import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -82,6 +86,7 @@ fun ShopHome(store: ShopStore, onOpenOrder: (String) -> Unit, onReviews: () -> U
     var page by remember { mutableIntStateOf(0) }
     var sidebar by remember { mutableStateOf(false) }
     var showClose by remember { mutableStateOf(false) }
+    var showDelete by remember { mutableStateOf(false) }
     val isOpen: Boolean = shop["isOpen"] == true
     val reason: String = shop["closeReason"]?.toString() ?: ""
     val closeType: String = shop["closeType"]?.toString() ?: ""
@@ -197,7 +202,14 @@ fun ShopHome(store: ShopStore, onOpenOrder: (String) -> Unit, onReviews: () -> U
                 val target: Int = (shop["loyaltyTarget"] as? Number)?.toInt() ?: 10
                 scope.launch { try { ShopApi.setLoyalty(store.shopId, !loyaltyOn, target) } catch (e: Exception) { shopToast(ctx, "บันทึกไม่สำเร็จ") } }
             },
+            onDelete = { sidebar = false; showDelete = true },
             onLogout = { sidebar = false; onLogout() }
+        )
+
+        if (showDelete) ShopDeleteDialog(
+            shopId = store.shopId,
+            pending = shopAsMap(shop["deleteRequest"])["status"] == "pending",
+            onDismiss = { showDelete = false }
         )
 
         if (showClose) ShopCloseDialog(
@@ -310,7 +322,7 @@ private fun ShopHistoryCard(o: ShopOrd, onClick: () -> Unit) {
 @Composable
 private fun ShopSidebar(
     visible: Boolean, name: String, sub: String, avatar: String, loyaltyOn: Boolean,
-    onClose: () -> Unit, onSoon: () -> Unit, onEdit: () -> Unit, onAds: () -> Unit, onShare: () -> Unit, onReviews: () -> Unit, onLoyalty: () -> Unit, onLogout: () -> Unit
+    onClose: () -> Unit, onSoon: () -> Unit, onEdit: () -> Unit, onAds: () -> Unit, onShare: () -> Unit, onReviews: () -> Unit, onLoyalty: () -> Unit, onDelete: () -> Unit, onLogout: () -> Unit
 ) {
     AnimatedVisibility(visible, enter = fadeIn(tween(200)), exit = fadeOut(tween(200))) {
         Box(Modifier.fillMaxSize().background(Color(0x66000000)).clickable(indication = null, interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }) { onClose() })
@@ -348,6 +360,10 @@ private fun ShopSidebar(
                 ShopVolumeControl()
                 HorizontalDivider(color = C.Gray)
                 ShopSideItem(ShopP.LOGOUT, "ออกจากระบบ", "", ShopRed) { onLogout() }
+                Text(
+                    "ขอลบบัญชีร้าน", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = C.Subtext,
+                    modifier = Modifier.fillMaxWidth().clickable { onDelete() }.padding(horizontal = 20.dp, vertical = 16.dp)
+                )
             }
         }
     }
@@ -365,6 +381,50 @@ private fun ShopSideItem(path: String, title: String, sub: String, tint: Color?,
             }
         }
         HorizontalDivider(color = C.Gray)
+    }
+}
+
+/** ขอลบบัญชีร้าน: ส่งคำขอไปที่ shops/{id}.deleteRequest ให้ผู้ดูแลระบบติดต่อกลับยืนยันตัวตนแล้วดำเนินการ (เหตุผลไม่บังคับ) */
+@Composable
+private fun ShopDeleteDialog(shopId: String, pending: Boolean, onDismiss: () -> Unit) {
+    val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var reason by remember { mutableStateOf("") }
+    var busy by remember { mutableStateOf(false) }
+    var done by remember { mutableStateOf(false) }
+    Dialog(onDismissRequest = onDismiss) {
+        Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(Color.White).padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            if (pending || done) {
+                Text("ส่งคำขอลบบัญชีแล้ว", fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = C.Text, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
+                Text("ผู้ดูแลระบบจะติดต่อกลับเพื่อยืนยันตัวตนและดำเนินการลบข้อมูลร้านของคุณ หากต้องการเร่งหรือยกเลิกคำขอ ติดต่อผู้ดูแลระบบทาง LINE ได้ครับ", fontSize = 14.sp, color = C.Subtext, lineHeight = 21.sp, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
+                Box(Modifier.fillMaxWidth().height(48.dp).clip(RoundedCornerShape(12.dp)).background(C.Primary).clickable { onDismiss() }, contentAlignment = Alignment.Center) {
+                    Text("ปิด", fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, color = Color.White)
+                }
+            } else {
+                Text("ขอลบบัญชีร้าน", fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = C.Text, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
+                Text("การลบจะลบข้อมูลร้าน เมนู และรูปภาพของร้าน ข้อมูลธุรกรรมบางส่วนอาจถูกเก็บไว้ตามที่กฎหมายกำหนด ผู้ดูแลระบบจะติดต่อกลับเพื่อยืนยันตัวตนก่อนดำเนินการ", fontSize = 14.sp, color = C.Subtext, lineHeight = 21.sp, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
+                NimitInput(reason, { reason = it }, "เหตุผล (ไม่บังคับ)", height = 70.dp, singleLine = false, fontSize = 14)
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Box(Modifier.weight(1f).height(48.dp).clip(RoundedCornerShape(12.dp)).background(C.Gray).clickable { onDismiss() }, contentAlignment = Alignment.Center) {
+                        Text("ยกเลิก", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = C.Subtext)
+                    }
+                    Box(Modifier.weight(1f).height(48.dp).clip(RoundedCornerShape(12.dp)).background(ShopRed).clickable(enabled = !busy) {
+                        busy = true
+                        scope.launch {
+                            try {
+                                FirebaseFirestore.getInstance().collection("shops").document(shopId).update(
+                                    mapOf("deleteRequest" to mapOf("status" to "pending", "reason" to reason.trim(), "requestedAt" to FieldValue.serverTimestamp()))
+                                ).await()
+                                done = true
+                            } catch (e: Exception) { shopToast(ctx, "ส่งคำขอไม่สำเร็จ ลองใหม่อีกครั้ง") }
+                            busy = false
+                        }
+                    }, contentAlignment = Alignment.Center) {
+                        Text(if (busy) "กำลังส่ง..." else "ส่งคำขอลบ", fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, color = Color.White)
+                    }
+                }
+            }
+        }
     }
 }
 
