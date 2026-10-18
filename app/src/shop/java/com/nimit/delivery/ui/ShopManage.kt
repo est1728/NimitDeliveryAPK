@@ -117,6 +117,8 @@ fun ShopManageScreen(store: ShopStore, onBack: () -> Unit) {
     val closedDates = remember { mutableStateListOf<ClosedDate>() }
     var mapMove by remember { mutableStateOf<ShopMapMove?>(null) }
     var mapFull by remember { mutableStateOf(false) }
+    // ร้านที่ยังไม่เคยปักหมุด → เปิดแผนที่ใหญ่ครั้งแรกแล้วหาตำแหน่งปัจจุบันให้เอง
+    var pinned by remember { mutableStateOf(true) }
     var fullMove by remember { mutableStateOf<ShopMapMove?>(null) }
 
     var showBanner by remember { mutableStateOf(false) }
@@ -159,6 +161,7 @@ fun ShopManageScreen(store: ShopStore, onBack: () -> Unit) {
             address = s["address"]?.toString() ?: ""
             val la: Double = (s["lat"] as? Number)?.toDouble() ?: 0.0
             val ln: Double = (s["lng"] as? Number)?.toDouble() ?: 0.0
+            pinned = la != 0.0 && ln != 0.0
             lat = if (la != 0.0) la else 13.7563
             lng = if (ln != 0.0) ln else 100.5018
             isOpen = s["isOpen"] == true
@@ -324,20 +327,22 @@ fun ShopManageScreen(store: ShopStore, onBack: () -> Unit) {
                 // ปักหมุด
                 MSection {
                     MTitle("ปักหมุดตำแหน่งร้าน")
-                    Box(Modifier.fillMaxWidth().height(220.dp).clip(RoundedCornerShape(14.dp)).border(1.5.dp, Color(0xFFE8EEF5), RoundedCornerShape(14.dp))) {
-                        if (inited) ShopLocMap(lat, lng, mapMove, { a, b -> lat = a; lng = b; dirty = true }, Modifier.fillMaxSize())
+                    // แผนที่เล็กดูอย่างเดียว ซีดลง แตะแล้วเปิดแผนที่ใหญ่ (ปุ่มแผนที่และปักหมุดอัตโนมัติอยู่ในแผนที่ใหญ่)
+                    Box(Modifier.fillMaxWidth().height(180.dp).clip(RoundedCornerShape(14.dp)).border(1.5.dp, Color(0xFFE8EEF5), RoundedCornerShape(14.dp))) {
+                        if (inited) ShopLocMap(lat, lng, mapMove, { _, _ -> }, Modifier.fillMaxSize(), interactive = false)
                         Box(
-                            Modifier.align(Alignment.TopStart).padding(start = 10.dp, top = 10.dp).size(36.dp).shadow(4.dp, RoundedCornerShape(8.dp)).clip(RoundedCornerShape(8.dp)).background(Color.White)
-                                .clickable { fullMove = null; mapFull = true },
+                            Modifier.fillMaxSize().background(Color.White.copy(alpha = 0.55f)).clickable {
+                                fullMove = null; mapFull = true
+                                if (!pinned) { pinned = true; locPerm.launch(arrayOf(android.Manifest.permission.ACCESS_FINE_LOCATION, android.Manifest.permission.ACCESS_COARSE_LOCATION)) }
+                            },
                             contentAlignment = Alignment.Center
-                        ) { PathIcon(M_FULL, C.Primary, 20.dp) }
-                        Box(
-                            Modifier.align(Alignment.BottomEnd).padding(end = 10.dp, bottom = 10.dp).size(40.dp).shadow(4.dp, CircleShape).clip(CircleShape).background(Color.White)
-                                .clickable { locPerm.launch(arrayOf(android.Manifest.permission.ACCESS_FINE_LOCATION, android.Manifest.permission.ACCESS_COARSE_LOCATION)) },
-                            contentAlignment = Alignment.Center
-                        ) { PathIcon(M_LOC, C.Primary, 20.dp) }
+                        ) {
+                            Text(
+                                "📍 แก้ไขที่อยู่พิกัด", fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, color = C.Primary,
+                                modifier = Modifier.clip(RoundedCornerShape(24.dp)).background(Color.White).padding(horizontal = 16.dp, vertical = 10.dp)
+                            )
+                        }
                     }
-                    Text("แตะแผนที่เพื่อปักหมุด หรือลากหมุดเพื่อขยับตำแหน่งร้าน", fontSize = 11.sp, color = C.Subtext, modifier = Modifier.padding(top = 8.dp))
                 }
 
                 // เวลาเปิด-ปิดอัตโนมัติ
@@ -439,18 +444,16 @@ fun ShopManageScreen(store: ShopStore, onBack: () -> Unit) {
                 }
                 Box(Modifier.weight(1f).fillMaxWidth()) {
                     ShopLocMap(lat, lng, fullMove, { a, b -> lat = a; lng = b; dirty = true }, Modifier.fillMaxSize())
-                    Box(
-                        Modifier.align(Alignment.BottomEnd).padding(end = 14.dp, bottom = 14.dp).size(46.dp).shadow(4.dp, CircleShape).clip(CircleShape).background(Color.White)
-                            .clickable { locPerm.launch(arrayOf(android.Manifest.permission.ACCESS_FINE_LOCATION, android.Manifest.permission.ACCESS_COARSE_LOCATION)) },
-                        contentAlignment = Alignment.Center
-                    ) { PathIcon(M_LOC, C.Primary, 22.dp) }
                     Text(
-                        "แตะแผนที่เพื่อปักหมุด หรือลากหมุดเพื่อขยับ", fontSize = 11.sp, color = C.Subtext,
-                        modifier = Modifier.align(Alignment.BottomStart).padding(start = 14.dp, bottom = 18.dp)
-                            .clip(RoundedCornerShape(8.dp)).background(Color.White.copy(alpha = 0.9f)).padding(horizontal = 10.dp, vertical = 6.dp)
+                        "📍 ใช้ตำแหน่งปัจจุบัน", fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, color = C.Primary,
+                        modifier = Modifier.align(Alignment.BottomStart).padding(start = 12.dp, bottom = 12.dp)
+                            .shadow(4.dp, RoundedCornerShape(12.dp)).clip(RoundedCornerShape(12.dp)).background(Color.White)
+                            .clickable { locPerm.launch(arrayOf(android.Manifest.permission.ACCESS_FINE_LOCATION, android.Manifest.permission.ACCESS_COARSE_LOCATION)) }
+                            .padding(horizontal = 14.dp, vertical = 11.dp)
                     )
                 }
-                Box(Modifier.fillMaxWidth().background(Color.White).navigationBarsPadding().padding(16.dp)) {
+                Column(Modifier.fillMaxWidth().background(Color.White).navigationBarsPadding().padding(16.dp)) {
+                    Text("แตะแผนที่ หรือกดหมุดค้างแล้วลากเพื่อย้ายหมุด", fontSize = 12.sp, color = C.Subtext, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp))
                     MBtn("ยืนยันตำแหน่งนี้", null, Color.White, FontWeight.ExtraBold) { mapFull = false; mapMove = ShopMapMove(lat, lng) }
                 }
             }

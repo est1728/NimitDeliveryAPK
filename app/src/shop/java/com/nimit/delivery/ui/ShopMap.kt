@@ -51,7 +51,7 @@ private val shopEsriSat = object : OnlineTileSourceBase(
 /** แผนที่ปักหมุด (osmdroid ตัวเดียวกับแอพลูกค้า): ดาวเทียม/แผนที่ถนน แตะเพื่อปักหมุด กดค้างที่หมุดแล้วลากเพื่อขยับ */
 @SuppressLint("ClickableViewAccessibility")
 @Composable
-fun ShopLocMap(lat: Double, lng: Double, move: ShopMapMove?, onPick: (Double, Double) -> Unit, modifier: Modifier = Modifier) {
+fun ShopLocMap(lat: Double, lng: Double, move: ShopMapMove?, onPick: (Double, Double) -> Unit, modifier: Modifier = Modifier, interactive: Boolean = true) {
     val ctx = LocalContext.current
     var sat by remember { mutableStateOf(true) }
     val pick = rememberUpdatedState(onPick)
@@ -72,9 +72,15 @@ fun ShopLocMap(lat: Double, lng: Double, move: ShopMapMove?, onPick: (Double, Do
             isTilesScaledToDpi = true
             controller.setZoom(15.0)
             controller.setCenter(GeoPoint(lat, lng))
-            setOnTouchListener { v, e ->
-                if (e.action == MotionEvent.ACTION_DOWN || e.action == MotionEvent.ACTION_MOVE) v.parent.requestDisallowInterceptTouchEvent(true)
-                false
+            if (interactive) {
+                setOnTouchListener { v, e ->
+                    if (e.action == MotionEvent.ACTION_DOWN || e.action == MotionEvent.ACTION_MOVE) v.parent.requestDisallowInterceptTouchEvent(true)
+                    false
+                }
+            } else {
+                // แผนที่เล็กดูอย่างเดียว: ไม่รับการสัมผัส ไม่มีปุ่มซูม
+                zoomController.setVisibility(org.osmdroid.views.CustomZoomButtonsController.Visibility.NEVER)
+                setOnTouchListener { _, _ -> true }
             }
         }
     }
@@ -120,8 +126,8 @@ fun ShopLocMap(lat: Double, lng: Double, move: ShopMapMove?, onPick: (Double, Do
 
     Box(modifier) {
         AndroidView(factory = { map }, modifier = Modifier.fillMaxSize())
-        Text(
-            if (sat) "แผนที่ถนน" else "ดาวเทียม", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = C.Primary,
+        if (interactive) Text(
+            if (sat) "🗺 แผนที่ถนน" else "🛰 ดาวเทียม", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = C.Primary,
             modifier = Modifier.align(Alignment.TopEnd).padding(10.dp)
                 .shadow(4.dp, RoundedCornerShape(8.dp)).clip(RoundedCornerShape(8.dp)).background(Color.White)
                 .clickable { sat = !sat }.padding(horizontal = 10.dp, vertical = 8.dp)

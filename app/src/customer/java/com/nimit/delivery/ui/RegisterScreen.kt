@@ -85,74 +85,21 @@ fun RegisterScreen(session: Session, onBack: () -> Unit, onDone: () -> Unit) {
     var sat by remember { mutableStateOf(true) }
     var saving by remember { mutableStateOf(false) }
 
-    val map = remember {
-        Configuration.getInstance().load(ctx, ctx.getSharedPreferences("osm", 0))
-        Configuration.getInstance().userAgentValue = ctx.packageName
-        Configuration.getInstance().apply {
-            osmdroidBasePath = java.io.File(ctx.filesDir, "osmdroid")
-            osmdroidTileCache = java.io.File(ctx.cacheDir, "osmdroid/tiles")
-            tileDownloadThreads = 6.toShort()
-            tileFileSystemThreads = 4.toShort()
-            expirationOverrideDuration = 7L * 24 * 3600 * 1000
-        }
-        MapView(ctx).apply {
-            setMultiTouchControls(true)
-            setTileSource(esriSat)
-            isTilesScaledToDpi = true
-            controller.setZoom(13.0)
-            controller.setCenter(GeoPoint(13.7563, 100.5018))
-            setOnTouchListener { v, e ->
-                if (e.action == MotionEvent.ACTION_DOWN || e.action == MotionEvent.ACTION_MOVE) v.parent.requestDisallowInterceptTouchEvent(true)
-                false
-            }
+    var bigOpen by remember { mutableStateOf(false) }
+    // แผนที่เล็ก: ดูอย่างเดียว แตะแล้วเปิดแผนที่ใหญ่ (ปักหมุดอัตโนมัติและปุ่มแผนที่ทั้งหมดอยู่ในแผนที่ใหญ่)
+    val pv = remember { makeAddrMap(ctx, false, 13.7563, 100.5018, 13.0) }
+    val pvMarker = remember { Marker(pv).apply { setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM) } }
+    LaunchedEffect(pin) {
+        val pp = pin
+        if (pp != null) {
+            pvMarker.position = GeoPoint(pp.first, pp.second)
+            if (!pv.overlays.contains(pvMarker)) pv.overlays.add(pvMarker)
+            pv.controller.setZoom(16.0)
+            pv.controller.setCenter(GeoPoint(pp.first, pp.second))
+            pv.invalidate()
         }
     }
-    val marker = remember { Marker(map) }
-
-    fun place(lat: Double, lng: Double) {
-        pin = lat to lng
-        marker.position = GeoPoint(lat, lng)
-        if (!map.overlays.contains(marker)) map.overlays.add(marker)
-        map.controller.setZoom(16.0)
-        map.controller.animateTo(GeoPoint(lat, lng))
-        map.invalidate()
-    }
-
-    LaunchedEffect(Unit) {
-        map.overlays.add(0, MapEventsOverlay(object : MapEventsReceiver {
-            override fun singleTapConfirmedHelper(p: GeoPoint): Boolean { place(p.latitude, p.longitude); return true }
-            override fun longPressHelper(p: GeoPoint): Boolean = false
-        }))
-    }
-    LaunchedEffect(sat) {
-        val want = if (sat) esriSat else TileSourceFactory.MAPNIK
-        if (map.tileProvider.tileSource.name() != want.name()) map.setTileSource(want)
-    }
-    DisposableEffect(Unit) { map.onResume(); onDispose { map.onPause(); map.onDetach() } }
-
-    fun fetchLocation() {
-        scope.launch {
-            try {
-                val client = LocationServices.getFusedLocationProviderClient(ctx)
-                val last = try { client.lastLocation.await() } catch (_: Exception) { null }
-                val loc = if (last != null && System.currentTimeMillis() - last.time < 120_000) last
-                    else withTimeoutOrNull(10_000) { client.getCurrentLocation(Priority.PRIORITY_HIGH_ACCURACY, null).await() }
-                if (loc != null) place(loc.latitude, loc.longitude)
-                else Toast.makeText(ctx, "ไม่พบตำแหน่ง ลองปักหมุดเองบนแผนที่ได้เลย", Toast.LENGTH_LONG).show()
-            } catch (_: Exception) {
-                Toast.makeText(ctx, "ไม่สามารถเข้าถึง GPS ได้ ลองปักหมุดเองบนแผนที่แทนได้ครับ", Toast.LENGTH_LONG).show()
-            }
-        }
-    }
-    val permLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
-        if (ok) fetchLocation()
-        else Toast.makeText(ctx, "ไม่ได้รับสิทธิ์ตำแหน่ง — เปิดได้ที่ตั้งค่าเครื่อง หรือปักหมุดเองบนแผนที่", Toast.LENGTH_LONG).show()
-    }
-    fun locate() {
-        if (ContextCompat.checkSelfPermission(ctx, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) fetchLocation()
-        else permLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
-    }
-    LaunchedEffect(Unit) { locate() }
+    DisposableEffect(Unit) { pv.onResume(); onDispose { pv.onPause(); pv.onDetach() } }
 
     // บันทึกความคืบหน้าอัตโนมัติ (เหมือนเว็บ)
     LaunchedEffect(name, address, pin) {
@@ -191,6 +138,15 @@ fun RegisterScreen(session: Session, onBack: () -> Unit, onDone: () -> Unit) {
         }
     }
 
+    if (bigOpen) {
+        BigMapPicker(
+            startLat = pin?.first ?: 13.7563, startLng = pin?.second ?: 100.5018, autoLocate = pin == null,
+            onConfirm = { la, ln -> pin = la to ln; bigOpen = false },
+            onClose = { bigOpen = false }
+        )
+        return
+    }
+
     Box(Modifier.fillMaxSize().background(Color.White)) {
         Column(Modifier.fillMaxSize()) {
             TopBar("ข้อมูลจัดส่ง", onBack)
@@ -204,21 +160,16 @@ fun RegisterScreen(session: Session, onBack: () -> Unit, onDone: () -> Unit) {
 
                 SectionTitle("ตำแหน่งจัดส่ง", top = 20)
                 val mapShape = RoundedCornerShape(14.dp)
-                Box(Modifier.fillMaxWidth().height(260.dp).clip(mapShape).border(2.dp, Color(0xFFE8E8E8), mapShape)) {
-                    AndroidView(factory = { map }, modifier = Modifier.fillMaxSize())
-                    Box(
-                        Modifier.align(Alignment.TopEnd).padding(10.dp).size(44.dp)
-                            .shadow(6.dp, CircleShape).clip(CircleShape).background(Color.White).clickable { locate() },
-                        contentAlignment = Alignment.Center
-                    ) { Icon(GpsIcon, null, tint = C.Primary, modifier = Modifier.size(22.dp)) }
-                    Text(
-                        if (sat) "แผนที่ถนน" else "ดาวเทียม", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = C.Primary,
-                        modifier = Modifier.align(Alignment.TopStart).padding(10.dp)
-                            .shadow(4.dp, RoundedCornerShape(8.dp)).clip(RoundedCornerShape(8.dp)).background(Color.White)
-                            .clickable { sat = !sat }.padding(horizontal = 10.dp, vertical = 8.dp)
-                    )
+                Box(Modifier.fillMaxWidth().height(200.dp).clip(mapShape).border(2.dp, Color(0xFFE8E8E8), mapShape)) {
+                    AndroidView(factory = { pv }, modifier = Modifier.fillMaxSize())
+                    Box(Modifier.fillMaxSize().background(Color.White.copy(alpha = 0.55f)).clickable { bigOpen = true }, contentAlignment = Alignment.Center) {
+                        Text(
+                            "📍 แก้ไขที่อยู่พิกัด", fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, color = C.Primary,
+                            modifier = Modifier.clip(RoundedCornerShape(24.dp)).background(Color.White).padding(horizontal = 16.dp, vertical = 10.dp)
+                        )
+                    }
                 }
-                Text("แตะแผนที่เพื่อปักหมุด หรือกดปุ่มใช้ตำแหน่งปัจจุบัน", fontSize = 12.sp, color = C.Subtext, modifier = Modifier.padding(top = 8.dp))
+                if (pin == null) Text("ยังไม่ได้ปักหมุด แตะที่แผนที่เพื่อปักหมุดตำแหน่งจัดส่ง", fontSize = 12.sp, color = C.Subtext, modifier = Modifier.padding(top = 8.dp))
                 pin?.let {
                     Text(
                         "%.5f, %.5f".format(it.first, it.second), fontSize = 13.sp, fontWeight = FontWeight.Bold, color = C.Primary,
