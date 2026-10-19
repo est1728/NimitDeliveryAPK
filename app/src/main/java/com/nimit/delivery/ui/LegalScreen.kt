@@ -14,6 +14,10 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -41,8 +45,11 @@ data class LegalSection(val title: String, val lines: List<String>)
 /** ลิงก์ LINE ของผู้ดูแลระบบ (ใช้ร่วมทุกแอป) ถ้าเว้นว่างจะซ่อนปุ่มทักไลน์ */
 const val ADMIN_LINE_URL: String = "https://lin.ee/6rWI6rH"
 
+/** titleEn/sectionsEn: ถ้าใส่ จะมีปุ่มสลับภาษา ไทย/EN มุมขวาบน (ค่าเริ่มต้นเป็นภาษาไทย) */
 @Composable
-fun LegalScreen(title: String, version: String, sections: List<LegalSection>, onBack: () -> Unit) {
+fun LegalScreen(title: String, version: String, sections: List<LegalSection>, titleEn: String? = null, sectionsEn: List<LegalSection>? = null, onBack: () -> Unit) {
+    var en by remember { mutableStateOf(false) }
+    val showEn: Boolean = en && sectionsEn != null
     // พื้นหลังไล่สีน้ำเงินเต็มจอ (เริ่มที่สีเดียวกับแถบสถานะ ไม่มีรอยต่อ) หัวข้ออยู่บนพื้นหลัง การ์ดเนื้อหาเลื่อนอยู่ด้านบน
     Box(
         Modifier.fillMaxSize()
@@ -58,6 +65,11 @@ fun LegalScreen(title: String, version: String, sections: List<LegalSection>, on
                 Modifier.size(38.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.18f)).clickable { onBack() },
                 contentAlignment = Alignment.Center
             ) { Icon(ArrowBackIcon, null, tint = Color.White, modifier = Modifier.size(18.dp)) }
+            if (sectionsEn != null) Text(
+                if (en) "ไทย" else "EN", fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = Color.White,
+                modifier = Modifier.align(Alignment.TopEnd).clip(RoundedCornerShape(20.dp)).background(Color.White.copy(alpha = 0.2f))
+                    .clickable { en = !en }.padding(horizontal = 14.dp, vertical = 9.dp)
+            )
             Column(Modifier.fillMaxWidth().padding(top = 6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 // ชื่อแบรนด์ตัวหนาเอียง: Nimit และ Delivery ขนาดเท่ากัน
                 Text(
@@ -68,17 +80,17 @@ fun LegalScreen(title: String, version: String, sections: List<LegalSection>, on
                     color = Color.White
                 )
                 Spacer(Modifier.height(14.dp))
-                Text(title, fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = Color.White)
+                Text(if (showEn) (titleEn ?: title) else title, fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = Color.White)
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    "ฉบับที่ $version", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White,
+                    (if (showEn) "Version $version" else "ฉบับที่ $version"), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White,
                     modifier = Modifier.clip(RoundedCornerShape(20.dp)).background(Color.White.copy(alpha = 0.2f)).padding(horizontal = 12.dp, vertical = 4.dp)
                 )
             }
         }
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 24.dp)) {
             val shape = RoundedCornerShape(18.dp)
-            sections.forEach { sec ->
+            (if (showEn) (sectionsEn ?: sections) else sections).forEach { sec ->
                 val m: MatchResult? = Regex("^(\\d+)\\.\\s*(.*)$").find(sec.title)
                 Column(Modifier.fillMaxWidth().padding(bottom = 12.dp).shadow(2.dp, shape).clip(shape).background(Color.White).padding(18.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -103,9 +115,9 @@ fun LegalScreen(title: String, version: String, sections: List<LegalSection>, on
                 Modifier.fillMaxWidth().shadow(2.dp, shape).clip(shape).background(Color.White).padding(18.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Text("มีข้อสงสัยเกี่ยวกับเงื่อนไขหรือข้อมูลของคุณ?", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = C.Text)
+                Text(if (showEn) "Questions about these terms or your data?" else "มีข้อสงสัยเกี่ยวกับเงื่อนไขหรือข้อมูลของคุณ?", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = C.Text)
                 Spacer(Modifier.height(10.dp))
-                ContactAdmin()
+                ContactAdmin(showEn)
             }
         }
     }
@@ -137,15 +149,15 @@ fun LegalFooter(onTerms: () -> Unit, onPrivacy: () -> Unit) {
             }
         )
         Spacer(Modifier.height(14.dp))
-        ContactAdmin()
+        ContactAdmin(false)
     }
 }
 
 @Composable
-private fun ContactAdmin() {
+private fun ContactAdmin(en: Boolean = false) {
     val ctx = LocalContext.current
     Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-        Text("ติดต่อผู้ดูแลระบบ", fontSize = 12.sp, color = C.Subtext)
+        Text(if (en) "Contact administrator" else "ติดต่อผู้ดูแลระบบ", fontSize = 12.sp, color = C.Subtext)
         if (ADMIN_LINE_URL.isNotBlank()) {
             Spacer(Modifier.height(6.dp))
             Box(
@@ -153,7 +165,7 @@ private fun ContactAdmin() {
                     try { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(ADMIN_LINE_URL))) } catch (e: Exception) { }
                 }.padding(horizontal = 16.dp),
                 contentAlignment = Alignment.Center
-            ) { Text("ทักไลน์แอดมิน", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF06A64A)) }
+            ) { Text(if (en) "Chat on LINE" else "ทักไลน์แอดมิน", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF06A64A)) }
         }
     }
 }

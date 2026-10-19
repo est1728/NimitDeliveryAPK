@@ -99,8 +99,8 @@ fun ShopNav() {
                 nav.navigate("home") { popUpTo("login") { inclusive = true } }
             })
         }
-        composable("terms") { LegalScreen("เงื่อนไขการใช้บริการ", ShopLegal.VERSION, ShopLegal.TERMS) { nav.popBackStack() } }
-        composable("privacy") { LegalScreen("นโยบายข้อมูลส่วนบุคคล", ShopLegal.VERSION, ShopLegal.PRIVACY) { nav.popBackStack() } }
+        composable("terms") { LegalScreen("เงื่อนไขการใช้บริการ", ShopLegal.VERSION, ShopLegal.TERMS, "Terms of Service", ShopLegal.TERMS_EN) { nav.popBackStack() } }
+        composable("privacy") { LegalScreen("นโยบายข้อมูลส่วนบุคคล", ShopLegal.VERSION, ShopLegal.PRIVACY, "Privacy Policy", ShopLegal.PRIVACY_EN) { nav.popBackStack() } }
         composable("home") {
             val s: ShopStore = holder.store ?: return@composable
             ShopHome(
