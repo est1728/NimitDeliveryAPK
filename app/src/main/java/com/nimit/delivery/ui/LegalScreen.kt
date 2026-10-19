@@ -59,11 +59,11 @@ fun LegalScreen(title: String, version: String, sections: List<LegalSection>, on
                 contentAlignment = Alignment.Center
             ) { Icon(ArrowBackIcon, null, tint = Color.White, modifier = Modifier.size(18.dp)) }
             Column(Modifier.fillMaxWidth().padding(top = 6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                // ชื่อแบรนด์ตัวหนาเอียง: Nimit ใหญ่ + Delivery เล็กกว่า (ฟอนต์เดียวกัน)
+                // ชื่อแบรนด์ตัวหนาเอียง: Nimit และ Delivery ขนาดเท่ากัน
                 Text(
                     buildAnnotatedString {
                         withStyle(SpanStyle(fontSize = 40.sp, fontWeight = FontWeight.Black, fontStyle = FontStyle.Italic, letterSpacing = (-1).sp)) { append("Nimit") }
-                        withStyle(SpanStyle(fontSize = 24.sp, fontWeight = FontWeight.Black, fontStyle = FontStyle.Italic, letterSpacing = (-0.5).sp)) { append(" Delivery") }
+                        withStyle(SpanStyle(fontSize = 40.sp, fontWeight = FontWeight.Black, fontStyle = FontStyle.Italic, letterSpacing = (-1).sp)) { append(" Delivery") }
                     },
                     color = Color.White
                 )
