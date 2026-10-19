@@ -1,0 +1,1754 @@
+#!/bin/bash
+# กำหนดเขตบนแผนที่ (วาดเอง + ค้นเส้นอำเภอ/ตำบลจาก OpenStreetMap) + ตรวจการทับซ้อน + ประวัติ + เครดิตแผนที่ (เขียนทับ/เพิ่ม 5 ไฟล์ รันซ้ำได้)
+set -e
+D=app/src/dev/java/com/nimit/delivery
+[ -f "$D/ui/DevZones.kt" ] && grep -q "DevMoveShopDialog" "$D/ui/DevZones.kt" || { echo "หยุด: ต้องรัน dev-zone.sh และ dev-move.sh ก่อน และรันใน ~/nimit-customer"; exit 1; }
+cat > "$D/data/DevZoneGeo.kt" <<'KT_EOF'
+package com.nimit.delivery.data
+
+import com.google.firebase.firestore.DocumentSnapshot
+import com.google.firebase.firestore.FieldValue
+import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.SetOptions
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.withContext
+import org.json.JSONArray
+import org.json.JSONObject
+import java.net.HttpURLConnection
+import java.net.URL
+import java.net.URLEncoder
+
+// จุดของรูปหลายเหลี่ยมเขต เก็บเป็น [{lat,lng},...] ตรงกับข้อมูลเดิม (franchises.zone)
+data class DevPt(val lat: Double, val lng: Double)
+
+// ผลค้นหาขอบเขตจากชื่อ (ring = เส้นรอบนอกที่ลดจุดแล้ว)
+data class DevPlace(val name: String, val kind: String, val ring: List<DevPt>)
+
+object DevGeo {
+    private const val UA = "NimitDeveloper/1.0 (zone editor)"
+
+    /**
+     * ค้นหาขอบเขตอำเภอ/ตำบลจากชื่อ ผ่าน OpenStreetMap Nominatim (ข้อมูล © OpenStreetMap contributors)
+     * ตามนโยบายของ Nominatim: ระบุ User-Agent, เรียกเมื่อกดค้นหาเท่านั้น (ไม่ค้นระหว่างพิมพ์)
+     */
+    suspend fun searchBoundary(q: String): List<DevPlace> = withContext(Dispatchers.IO) {
+        val url = "https://nominatim.openstreetmap.org/search?format=jsonv2&polygon_geojson=1&polygon_threshold=0.0003" +
+            "&limit=6&countrycodes=th&accept-language=th&q=" + URLEncoder.encode(q.trim(), "UTF-8")
+        val c = URL(url).openConnection() as HttpURLConnection
+        try {
+            c.connectTimeout = 15000
+            c.readTimeout = 30000
+            c.setRequestProperty("User-Agent", UA)
+            c.setRequestProperty("Accept-Language", "th")
+            val code = c.responseCode
+            if (code != 200) throw java.io.IOException("HTTP " + code)
+            val txt = c.inputStream.bufferedReader().use { it.readText() }
+            val arr = JSONArray(txt)
+            val out = ArrayList<DevPlace>()
+            for (i in 0 until arr.length()) {
+                val o = arr.getJSONObject(i)
+                val g = o.optJSONObject("geojson") ?: continue
+                val type = g.optString("type")
+                if (type != "Polygon" && type != "MultiPolygon") continue
+                val ring = biggestRing(g) ?: continue
+                val simple = simplify(ring)
+                if (simple.size < 3) continue
+                out.add(DevPlace(o.optString("display_name"), o.optString("type"), simple))
+            }
+            out
+        } finally {
+            c.disconnect()
+        }
+    }
+
+    private fun ringOf(a: JSONArray): List<DevPt> {
+        val out = ArrayList<DevPt>()
+        for (i in 0 until a.length()) {
+            val p = a.getJSONArray(i)
+            out.add(DevPt(p.getDouble(1), p.getDouble(0)))
+        }
+        if (out.size > 1 && out[0] == out[out.size - 1]) out.removeAt(out.size - 1)
+        return out
+    }
+
+    private fun biggestRing(g: JSONObject): List<DevPt>? {
+        val coords = g.optJSONArray("coordinates") ?: return null
+        if (g.optString("type") == "Polygon") {
+            val outer = coords.optJSONArray(0) ?: return null
+            return ringOf(outer)
+        }
+        var best: List<DevPt>? = null
+        for (i in 0 until coords.length()) {
+            val poly = coords.optJSONArray(i) ?: continue
+            val outer = poly.optJSONArray(0) ?: continue
+            val r = ringOf(outer)
+            if (best == null || r.size > (best?.size ?: 0)) best = r
+        }
+        return best
+    }
+
+    /** ลดจำนวนจุด (Ramer–Douglas–Peucker) ให้ไม่เกินราว 300 จุด เพื่อให้เอกสารใน Firestore เล็กและแก้จุดได้จริง */
+    fun simplify(p: List<DevPt>): List<DevPt> {
+        var eps = 0.0002
+        var cur = rdp(p, eps)
+        while (cur.size > 300 && eps < 0.05) {
+            eps *= 1.6
+            cur = rdp(p, eps)
+        }
+        return cur
+    }
+
+    private fun dist(pt: DevPt, a: DevPt, b: DevPt): Double {
+        val dx = b.lng - a.lng
+        val dy = b.lat - a.lat
+        val len2 = dx * dx + dy * dy
+        if (len2 == 0.0) return Math.hypot(pt.lng - a.lng, pt.lat - a.lat)
+        var t = ((pt.lng - a.lng) * dx + (pt.lat - a.lat) * dy) / len2
+        if (t < 0.0) t = 0.0
+        if (t > 1.0) t = 1.0
+        return Math.hypot(pt.lng - (a.lng + t * dx), pt.lat - (a.lat + t * dy))
+    }
+
+    private fun rdp(p: List<DevPt>, eps: Double): List<DevPt> {
+        if (p.size < 4) return p
+        val keep = BooleanArray(p.size)
+        keep[0] = true
+        keep[p.size - 1] = true
+        val stack = ArrayDeque<IntArray>()
+        stack.addLast(intArrayOf(0, p.size - 1))
+        while (stack.isNotEmpty()) {
+            val seg = stack.removeLast()
+            val a = seg[0]
+            val b = seg[1]
+            var maxD = 0.0
+            var idx = -1
+            for (i in a + 1 until b) {
+                val d = dist(p[i], p[a], p[b])
+                if (d > maxD) {
+                    maxD = d
+                    idx = i
+                }
+            }
+            if (idx != -1 && maxD > eps) {
+                keep[idx] = true
+                stack.addLast(intArrayOf(a, idx))
+                stack.addLast(intArrayOf(idx, b))
+            }
+        }
+        return p.filterIndexed { i, _ -> keep[i] }
+    }
+
+    private fun inside(pt: DevPt, poly: List<DevPt>): Boolean {
+        var c = false
+        var j = poly.size - 1
+        for (i in poly.indices) {
+            val a = poly[i]
+            val b = poly[j]
+            if ((a.lat > pt.lat) != (b.lat > pt.lat) &&
+                pt.lng < (b.lng - a.lng) * (pt.lat - a.lat) / (b.lat - a.lat) + a.lng
+            ) c = !c
+            j = i
+        }
+        return c
+    }
+
+    private fun cross(o: DevPt, a: DevPt, b: DevPt): Double =
+        (a.lng - o.lng) * (b.lat - o.lat) - (a.lat - o.lat) * (b.lng - o.lng)
+
+    private fun segInter(p1: DevPt, p2: DevPt, p3: DevPt, p4: DevPt): Boolean {
+        val d1 = cross(p3, p4, p1)
+        val d2 = cross(p3, p4, p2)
+        val d3 = cross(p1, p2, p3)
+        val d4 = cross(p1, p2, p4)
+        return ((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) && ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0))
+    }
+
+    /** รูปสองรูปทับซ้อนกันหรือไม่ (จุดยอดอยู่ในอีกรูป หรือเส้นขอบตัดกัน) */
+    fun overlaps(a: List<DevPt>, b: List<DevPt>): Boolean {
+        if (a.size < 3 || b.size < 3) return false
+        if (a.any { inside(it, b) } || b.any { inside(it, a) }) return true
+        for (i in a.indices) {
+            val a1 = a[i]
+            val a2 = a[(i + 1) % a.size]
+            for (j in b.indices) {
+                if (segInter(a1, a2, b[j], b[(j + 1) % b.size])) return true
+            }
+        }
+        return false
+    }
+}
+
+object DevZoneGeoRepo {
+    private fun parse(d: DocumentSnapshot): List<DevPt> {
+        val raw = d.get("zone") as? List<*> ?: return emptyList()
+        val out = ArrayList<DevPt>()
+        for (m in raw) {
+            val e = (m as? Map<*, *>)?.entries?.associate { it.key.toString() to it.value } ?: continue
+            val la = (e["lat"] as? Number)?.toDouble()
+            val lo = (e["lng"] as? Number)?.toDouble()
+            if (la != null && lo != null) out.add(DevPt(la, lo))
+        }
+        return out
+    }
+
+    /** รูปเขตของทุกแฟรนไชส์ (id -> จุด) */
+    suspend fun loadAll(): Map<String, List<DevPt>> {
+        val s = FirebaseFirestore.getInstance().collection("franchises").get().await()
+        return s.documents.associate { it.id to parse(it) }
+    }
+
+    /**
+     * บันทึกรูปเขต: franchises.zone + zoneStatus:"approved" (ผู้พัฒนากำหนดเองจึงไม่มีขั้นอนุมัติ)
+     * + สำเนา franchiseZones/{id} (แอปลูกค้าใช้เช็คเขต) + ประวัติ — เขียนพร้อมกันในครั้งเดียว
+     */
+    suspend fun saveZone(f: DevFranchise, pts: List<DevPt>): String? {
+        if (pts.size < 3) return "ต้องมีอย่างน้อย 3 จุด"
+        val email = DevRepo.currentEmail() ?: return "ยังไม่ได้เข้าสู่ระบบ"
+        val list = pts.map { mapOf("lat" to it.lat, "lng" to it.lng) }
+        return try {
+            val db = FirebaseFirestore.getInstance()
+            val b = db.batch()
+            b.update(db.collection("franchises").document(f.id), mapOf("zone" to list, "zoneStatus" to "approved"))
+            b.set(
+                db.collection("franchiseZones").document(f.id),
+                mapOf("franchiseId" to f.id, "name" to f.name, "zone" to list),
+                SetOptions.merge()
+            )
+            b.set(
+                db.collection("franchiseAudit").document(),
+                mapOf(
+                    "action" to "set_zone",
+                    "by" to email,
+                    "at" to FieldValue.serverTimestamp(),
+                    "groupId" to f.groupId,
+                    "zoneIds" to listOf(f.id),
+                    "zoneNames" to listOf(f.name),
+                    "before" to mapOf("zone" to (f.zonePoints.toString() + " จุด")),
+                    "after" to mapOf("zone" to (pts.size.toString() + " จุด"))
+                )
+            )
+            b.commit().await()
+            null
+        } catch (ex: CancellationException) {
+            throw ex
+        } catch (ex: Exception) {
+            devWriteError(ex)
+        }
+    }
+}
+KT_EOF
+cat > "$D/ui/DevZoneMap.kt" <<'KT_EOF'
+package com.nimit.delivery.ui
+
+import android.annotation.SuppressLint
+import android.graphics.drawable.GradientDrawable
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import com.nimit.delivery.data.DevFranchise
+import com.nimit.delivery.data.DevGeo
+import com.nimit.delivery.data.DevPlace
+import com.nimit.delivery.data.DevPt
+import com.nimit.delivery.data.DevZoneGeoRepo
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
+import org.osmdroid.config.Configuration
+import org.osmdroid.events.MapEventsReceiver
+import org.osmdroid.tileprovider.tilesource.OnlineTileSourceBase
+import org.osmdroid.tileprovider.tilesource.TileSourceFactory
+import org.osmdroid.util.BoundingBox
+import org.osmdroid.util.GeoPoint
+import org.osmdroid.util.MapTileIndex
+import org.osmdroid.views.MapView
+import org.osmdroid.views.overlay.MapEventsOverlay
+import org.osmdroid.views.overlay.Marker
+import org.osmdroid.views.overlay.Polygon
+import org.osmdroid.views.overlay.Polyline
+
+// คำสั่งให้แผนที่ซูมไปที่ชุดจุด (สร้างอินสแตนซ์ใหม่ทุกครั้งที่ต้องการสั่ง)
+private class DevCam(val pts: List<DevPt>)
+
+private val devEsriSat = object : OnlineTileSourceBase(
+    "EsriSat", 0, 19, 256, "",
+    arrayOf("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/")
+) {
+    override fun getTileURLString(pMapTileIndex: Long): String =
+        baseUrl + MapTileIndex.getZoom(pMapTileIndex) + "/" + MapTileIndex.getY(pMapTileIndex) + "/" + MapTileIndex.getX(pMapTileIndex)
+}
+
+private fun devRebuild(
+    v: MapView,
+    pts: List<DevPt>,
+    others: List<List<DevPt>>,
+    onAdd: (Double, Double) -> Unit,
+    onMove: (Int, Double, Double) -> Unit
+) {
+    v.overlays.clear()
+    // เขตอื่น: เส้นสีเทาจาง (ไว้ดูการทับซ้อน)
+    others.forEach { poly ->
+        if (poly.size >= 3) {
+            v.overlays.add(Polygon(v).apply {
+                points = poly.map { GeoPoint(it.lat, it.lng) }
+                fillPaint.color = android.graphics.Color.argb(40, 100, 116, 139)
+                outlinePaint.color = android.graphics.Color.argb(190, 100, 116, 139)
+                outlinePaint.strokeWidth = 3f
+            })
+        }
+    }
+    // เขตที่กำลังแก้: สีส้ม
+    val geo = pts.map { GeoPoint(it.lat, it.lng) }
+    if (geo.size >= 3) {
+        v.overlays.add(Polygon(v).apply {
+            points = geo
+            fillPaint.color = android.graphics.Color.argb(70, 234, 88, 12)
+            outlinePaint.color = android.graphics.Color.argb(255, 234, 88, 12)
+            outlinePaint.strokeWidth = 5f
+        })
+    } else if (geo.size == 2) {
+        v.overlays.add(Polyline(v).apply {
+            setPoints(geo)
+            outlinePaint.color = android.graphics.Color.argb(255, 234, 88, 12)
+            outlinePaint.strokeWidth = 5f
+        })
+    }
+    // แตะแผนที่ = เพิ่มจุด (อยู่เหนือรูปเขตเพื่อไม่ให้รูปเขตดักการแตะ แต่อยู่ใต้จุดเพื่อให้จุดรับการลาก)
+    v.overlays.add(MapEventsOverlay(object : MapEventsReceiver {
+        override fun singleTapConfirmedHelper(p: GeoPoint): Boolean {
+            onAdd(p.latitude, p.longitude)
+            return true
+        }
+
+        override fun longPressHelper(p: GeoPoint): Boolean = false
+    }))
+    val dot = GradientDrawable().apply {
+        shape = GradientDrawable.OVAL
+        setColor(android.graphics.Color.rgb(234, 88, 12))
+        setStroke(4, android.graphics.Color.WHITE)
+        setSize(40, 40)
+    }
+    geo.forEachIndexed { i, g ->
+        v.overlays.add(Marker(v).apply {
+            position = g
+            setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
+            icon = dot
+            isDraggable = true
+            setOnMarkerClickListener(Marker.OnMarkerClickListener { _, _ -> true })
+            setOnMarkerDragListener(object : Marker.OnMarkerDragListener {
+                override fun onMarkerDrag(marker: Marker?) {}
+                override fun onMarkerDragStart(marker: Marker?) {}
+                override fun onMarkerDragEnd(marker: Marker?) {
+                    val pos = marker?.position
+                    if (pos != null) onMove(i, pos.latitude, pos.longitude)
+                }
+            })
+        })
+    }
+    v.invalidate()
+}
+
+@SuppressLint("ClickableViewAccessibility")
+@Composable
+private fun DevZoneMapView(
+    pts: List<DevPt>,
+    others: List<List<DevPt>>,
+    sat: Boolean,
+    cam: DevCam?,
+    onAdd: (Double, Double) -> Unit,
+    onMove: (Int, Double, Double) -> Unit,
+    modifier: Modifier
+) {
+    val ctx = LocalContext.current
+    val addCb = rememberUpdatedState(onAdd)
+    val moveCb = rememberUpdatedState(onMove)
+    val satHolder = remember { booleanArrayOf(true) }
+    val map: MapView = remember {
+        Configuration.getInstance().load(ctx, ctx.getSharedPreferences("osm", 0))
+        Configuration.getInstance().userAgentValue = ctx.packageName
+        Configuration.getInstance().apply {
+            osmdroidBasePath = java.io.File(ctx.filesDir, "osmdroid")
+            osmdroidTileCache = java.io.File(ctx.cacheDir, "osmdroid/tiles")
+            tileDownloadThreads = 6.toShort()
+            tileFileSystemThreads = 4.toShort()
+            expirationOverrideDuration = 7L * 24 * 3600 * 1000
+        }
+        MapView(ctx).apply {
+            setMultiTouchControls(true)
+            setTileSource(devEsriSat)
+            isTilesScaledToDpi = true
+            controller.setZoom(6.0)
+            controller.setCenter(GeoPoint(15.0, 101.0))
+        }
+    }
+    DisposableEffect(Unit) {
+        map.onResume()
+        onDispose {
+            map.onPause()
+            map.onDetach()
+        }
+    }
+    LaunchedEffect(cam) {
+        val c = cam
+        if (c != null && c.pts.isNotEmpty()) {
+            val geo = c.pts.map { GeoPoint(it.lat, it.lng) }
+            if (geo.size == 1) {
+                map.controller.setZoom(15.0)
+                map.controller.setCenter(geo[0])
+            } else {
+                val bb = BoundingBox.fromGeoPoints(geo)
+                map.post { map.zoomToBoundingBox(bb, true, 80) }
+            }
+        }
+    }
+    AndroidView(
+        factory = { map },
+        modifier = modifier,
+        update = { v ->
+            if (satHolder[0] != sat) {
+                satHolder[0] = sat
+                v.setTileSource(if (sat) devEsriSat else TileSourceFactory.MAPNIK)
+            }
+            devRebuild(v, pts, others, addCb.value, moveCb.value)
+        }
+    )
+}
+
+// ตัวแก้ไขเขตบนแผนที่ (เต็มจอ): แตะเพิ่มจุด / กดค้างที่จุดแล้วลากเพื่อขยับ / ค้นหาเส้นอำเภอ-ตำบลมาเป็นจุดตั้งต้น
+@Composable
+fun DevZoneMapEditor(f: DevFranchise, all: List<DevFranchise>, onDismiss: () -> Unit, onSaved: (String) -> Unit) {
+    val pts = remember { mutableStateListOf<DevPt>() }
+    var others by remember { mutableStateOf<Map<String, List<DevPt>>>(emptyMap()) }
+    var loaded by remember { mutableStateOf(false) }
+    var sat by remember { mutableStateOf(true) }
+    var cam by remember { mutableStateOf<DevCam?>(null) }
+    var query by remember { mutableStateOf("") }
+    var results by remember { mutableStateOf<List<DevPlace>>(emptyList()) }
+    var msg by remember { mutableStateOf("") }
+    var msgErr by remember { mutableStateOf(false) }
+    var busy by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+
+    LaunchedEffect(Unit) {
+        try {
+            val m = DevZoneGeoRepo.loadAll()
+            others = m.filterKeys { it != f.id }.filterValues { it.size >= 3 }
+            val mine = m[f.id] ?: emptyList()
+            pts.clear()
+            pts.addAll(mine)
+            cam = DevCam(if (mine.isNotEmpty()) mine else others.values.flatten())
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            msg = "โหลดรูปเขตเดิมไม่สำเร็จ (ยังวาดใหม่ได้)"
+            msgErr = true
+        }
+        loaded = true
+    }
+
+    val snap = pts.toList()
+    val nameOf = all.associate { it.id to it.name }
+    val overlapNames = remember(snap, others) {
+        others.filter { DevGeo.overlaps(snap, it.value) }.keys.map { nameOf[it] ?: "เขตอื่น" }
+    }
+
+    fun doSearch() {
+        if (query.isBlank()) return
+        busy = true
+        msg = ""
+        msgErr = false
+        scope.launch {
+            try {
+                val r = DevGeo.searchBoundary(query)
+                results = r
+                if (r.isEmpty()) {
+                    msg = "ไม่พบเส้นขอบเขตของชื่อนี้ (ลองเติมคำ เช่น อำเภอแม่จัน เชียงราย)"
+                    msgErr = true
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                msg = "ค้นหาไม่สำเร็จ (ตรวจสอบอินเทอร์เน็ตแล้วลองใหม่)"
+                msgErr = true
+            }
+            busy = false
+        }
+    }
+
+    fun doSave() {
+        if (pts.size < 3) {
+            msg = "ต้องมีอย่างน้อย 3 จุด"
+            msgErr = true
+            return
+        }
+        busy = true
+        msg = ""
+        msgErr = false
+        scope.launch {
+            val n = pts.size
+            val r = DevZoneGeoRepo.saveZone(f, pts.toList())
+            busy = false
+            if (r == null) {
+                onSaved("กำหนดเขต " + f.name + " บนแผนที่แล้ว (" + n + " จุด) และบันทึกประวัติแล้ว")
+            } else {
+                msg = r
+                msgErr = true
+            }
+        }
+    }
+
+    Dialog(
+        onDismissRequest = { if (!busy) onDismiss() },
+        properties = DialogProperties(usePlatformDefaultWidth = false, dismissOnClickOutside = false)
+    ) {
+        Column(Modifier.fillMaxSize().background(Color.White)) {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .background(Brush.linearGradient(listOf(DevC.P, DevC.PD)))
+                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                DevMapChip("ปิด", Color.White.copy(alpha = 0.2f), Color.White) { if (!busy) onDismiss() }
+                Text(
+                    "กำหนดเขต: " + f.name, color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.ExtraBold,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f)
+                )
+                DevMapChip(if (busy) "กำลังทำงาน..." else "บันทึก", Color.White, DevC.P) { if (!busy) doSave() }
+            }
+            Box(Modifier.weight(1f).fillMaxWidth()) {
+                DevZoneMapView(
+                    pts = snap, others = others.values.toList(), sat = sat, cam = cam,
+                    onAdd = { la, lo -> pts.add(DevPt(la, lo)) },
+                    onMove = { i, la, lo -> if (i in pts.indices) pts[i] = DevPt(la, lo) },
+                    modifier = Modifier.fillMaxSize()
+                )
+                // เครดิตแหล่งแผนที่ (ข้อกำหนดของ Esri / OpenStreetMap)
+                Text(
+                    if (sat) "Powered by Esri · Esri, Maxar, Earthstar Geographics, and the GIS User Community" else "© OpenStreetMap contributors",
+                    fontSize = 9.5.sp, color = Color(0xFF334155), maxLines = 2,
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(4.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(Color.White.copy(alpha = 0.8f))
+                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                )
+                if (!loaded) {
+                    Text(
+                        "กำลังโหลดเขต...", fontSize = 12.sp, color = DevC.S, fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(12.dp).clip(RoundedCornerShape(10.dp)).background(Color.White).padding(horizontal = 10.dp, vertical = 6.dp)
+                    )
+                }
+            }
+            Column(
+                Modifier.fillMaxWidth().heightIn(max = 300.dp).verticalScroll(rememberScrollState()).padding(12.dp)
+            ) {
+                Text(
+                    "จุดทั้งหมด " + snap.size + " · แตะแผนที่เพื่อเพิ่มจุด กดค้างที่จุดสีส้มแล้วลากเพื่อขยับ (เส้นสีเทา = เขตอื่น)",
+                    fontSize = 11.5.sp, color = DevC.S, lineHeight = 17.sp, modifier = Modifier.padding(bottom = 6.dp)
+                )
+                if (overlapNames.isNotEmpty()) {
+                    Text(
+                        "ทับซ้อนกับ: " + overlapNames.joinToString(", ") + " (ร้านที่อยู่ในพื้นที่ทับซ้อนผูกให้ขึ้นทั้งสองเขตได้)",
+                        fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = DevC.O, lineHeight = 17.sp, modifier = Modifier.padding(bottom = 6.dp)
+                    )
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(bottom = 10.dp)) {
+                    DevMapChip("ลบจุดล่าสุด", DevC.PL, DevC.P) { if (pts.isNotEmpty()) pts.removeAt(pts.size - 1) }
+                    DevMapChip("ล้างทั้งหมด", DevC.RL, DevC.R) { pts.clear() }
+                    DevMapChip(if (sat) "แผนที่ถนน" else "ดาวเทียม", DevC.PL, DevC.P) { sat = !sat }
+                }
+                Text("ค้นหาเส้นอำเภอ/ตำบลมาเป็นจุดตั้งต้น (จะแทนที่จุดเดิม)", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = DevC.S, modifier = Modifier.padding(bottom = 6.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.weight(1f)) { DevMapInput(query, { query = it }, "เช่น อำเภอแม่จัน เชียงราย") }
+                    DevMapChip(if (busy) "..." else "ค้นหา", DevC.P, Color.White) { if (!busy) doSearch() }
+                }
+                results.forEach { p ->
+                    Row(
+                        Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text(p.name, fontSize = 12.sp, color = DevC.T, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                            Text(p.kind + " · " + p.ring.size + " จุด", fontSize = 10.5.sp, color = DevC.S)
+                        }
+                        DevMapChip("ใช้เส้นนี้", DevC.GnL, DevC.Gn) {
+                            pts.clear()
+                            pts.addAll(p.ring)
+                            cam = DevCam(p.ring)
+                            results = emptyList()
+                        }
+                    }
+                }
+                if (results.isNotEmpty()) {
+                    Text("ข้อมูลขอบเขต © OpenStreetMap contributors", fontSize = 10.5.sp, color = DevC.S, modifier = Modifier.padding(top = 4.dp))
+                }
+                if (msg.isNotEmpty()) {
+                    Text(
+                        msg, fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold,
+                        color = if (msgErr) DevC.R else DevC.Gn, modifier = Modifier.padding(top = 8.dp)
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DevMapChip(text: String, bg: Color, fg: Color, onClick: () -> Unit) {
+    Text(
+        text, fontSize = 12.5.sp, fontWeight = FontWeight.ExtraBold, color = fg, maxLines = 1,
+        modifier = Modifier
+            .clip(RoundedCornerShape(20.dp))
+            .background(bg)
+            .clickable { onClick() }
+            .padding(horizontal = 14.dp, vertical = 9.dp)
+    )
+}
+
+@Composable
+private fun DevMapInput(value: String, onChange: (String) -> Unit, hint: String) {
+    BasicTextField(
+        value = value,
+        onValueChange = onChange,
+        singleLine = true,
+        textStyle = TextStyle(fontSize = 14.sp, color = DevC.T),
+        cursorBrush = SolidColor(DevC.P),
+        modifier = Modifier.fillMaxWidth(),
+        decorationBox = { inner ->
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .border(BorderStroke(1.5.dp, Color(0xFFE2E8F0)), RoundedCornerShape(14.dp))
+                    .padding(horizontal = 14.dp, vertical = 11.dp),
+                contentAlignment = Alignment.CenterStart
+            ) {
+                if (value.isEmpty()) Text(hint, fontSize = 13.sp, color = Color(0xFF94A3B8))
+                inner()
+            }
+        }
+    )
+}
+KT_EOF
+cat > "$D/data/DevAudit.kt" <<'KT_EOF'
+package com.nimit.delivery.data
+
+import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.Query
+import kotlinx.coroutines.tasks.await
+
+data class DevAuditItem(
+    val id: String,
+    val action: String,
+    val by: String,
+    val atMillis: Long,
+    val names: List<String>,
+    val groupId: String,
+    val zoneIds: List<String>,
+    val details: List<String>
+)
+
+private val devAuditFields = listOf(
+    "name" to "ชื่อเขต",
+    "province" to "พื้นที่",
+    "phone" to "เบอร์โทร",
+    "monthlyFee" to "ค่าแฟรนไชส์/เดือน",
+    "status" to "สถานะ",
+    "zone" to "เขตบนแผนที่"
+)
+
+private fun devAuditValue(k: String, v: Any?): String {
+    val s = v?.toString() ?: "-"
+    if (k == "status") return if (s == "active") "ใช้งาน" else if (s == "suspended") "ระงับ" else s
+    return if (s.isEmpty()) "-" else s
+}
+
+// สร้างบรรทัด "ชื่อฟิลด์: ก่อน → หลัง" สำหรับเพิ่ม/แก้ไขเขต (ไม่มีรหัสจริงในประวัติ)
+private fun devAuditDetails(
+    action: String,
+    before: Map<String, Any?>,
+    after: Map<String, Any?>,
+    codeChanged: Boolean,
+    shopName: String,
+    names: List<String>
+): List<String> {
+    if (action == "move_shop" || action == "copy_shop") {
+        val from = names.getOrNull(0) ?: "-"
+        val to = names.getOrNull(1) ?: "-"
+        return listOf(
+            "ร้าน: " + (if (shopName.isEmpty()) "-" else shopName),
+            (if (action == "move_shop") "ย้ายจาก " else "คัดลอกจาก ") + from + " → " + to
+        )
+    }
+    if (action != "create_zone" && action != "edit_zone" && action != "set_zone") return emptyList()
+    val out = ArrayList<String>()
+    devAuditFields.forEach { (k, label) ->
+        if (after.containsKey(k)) out.add(label + ": " + devAuditValue(k, before[k]) + " → " + devAuditValue(k, after[k]))
+    }
+    if (codeChanged) out.add("รหัสเข้าใช้แอปแอดมิน: ตั้งใหม่")
+    return out
+}
+
+// อ่านประวัติการเปลี่ยนแปลงเขต (franchiseAudit) อ่านอย่างเดียว เรียงใหม่สุดก่อน
+object DevAuditRepo {
+    suspend fun recent(limit: Long = 100): List<DevAuditItem> {
+        val snap = FirebaseFirestore.getInstance().collection("franchiseAudit")
+            .orderBy("at", Query.Direction.DESCENDING)
+            .limit(limit)
+            .get()
+            .await()
+        return snap.documents.map { d ->
+            val action = d.getString("action") ?: ""
+            val before = (d.get("before") as? Map<*, *>)?.entries?.associate { it.key.toString() to it.value } ?: emptyMap()
+            val after = (d.get("after") as? Map<*, *>)?.entries?.associate { it.key.toString() to it.value } ?: emptyMap()
+            DevAuditItem(
+                id = d.id,
+                action = action,
+                by = d.getString("by") ?: "",
+                atMillis = d.getTimestamp("at")?.toDate()?.time ?: 0L,
+                names = (d.get("zoneNames") as? List<*>)?.mapNotNull { it as? String } ?: emptyList(),
+                groupId = d.getString("groupId") ?: "",
+                zoneIds = (d.get("zoneIds") as? List<*>)?.mapNotNull { it as? String } ?: emptyList(),
+                details = devAuditDetails(
+                    action, before, after, d.getBoolean("codeChanged") == true,
+                    d.getString("shopName") ?: "",
+                    (d.get("zoneNames") as? List<*>)?.mapNotNull { it as? String } ?: emptyList()
+                )
+            )
+        }
+    }
+}
+KT_EOF
+cat > "$D/ui/DevAudit.kt" <<'KT_EOF'
+package com.nimit.delivery.ui
+
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.nimit.delivery.data.DevAuditItem
+import com.nimit.delivery.data.DevAuditRepo
+import kotlinx.coroutines.CancellationException
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+
+private fun devAuditLabel(a: String): String = when (a) {
+    "link_zones" -> "ผูกเขต"
+    "unlink_zone" -> "เลิกผูกเขต"
+    "create_zone" -> "เพิ่มเขต"
+    "edit_zone" -> "แก้ไขเขต"
+    "move_shop" -> "ย้ายร้าน"
+    "set_zone" -> "กำหนดเขตบนแผนที่"
+    "copy_shop" -> "คัดลอกร้าน"
+    else -> a
+}
+
+private fun devAuditTime(ms: Long): String =
+    if (ms <= 0L) "กำลังบันทึก" else SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.US).format(Date(ms))
+
+// หน้าประวัติการเปลี่ยนแปลง: ใครทำอะไรกับเขต เมื่อไร (อ่านอย่างเดียว ลบ/แก้ไม่ได้จากแอป)
+@Composable
+fun DevAuditScreen() {
+    var list by remember { mutableStateOf<List<DevAuditItem>?>(null) }
+    var err by remember { mutableStateOf(false) }
+    var tick by remember { mutableStateOf(0) }
+    LaunchedEffect(tick) {
+        list = null
+        err = false
+        try {
+            list = DevAuditRepo.recent()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            err = true
+        }
+    }
+    val l = list
+    Row(Modifier.fillMaxWidth().padding(bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            if (l == null) "ประวัติการเปลี่ยนแปลง" else "ประวัติการเปลี่ยนแปลง (" + l.size + ")",
+            fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, color = DevC.T,
+            maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f)
+        )
+        Text(
+            "รีเฟรช", fontSize = 12.5.sp, fontWeight = FontWeight.Bold, color = DevC.P,
+            modifier = Modifier.clickable { tick++ }.padding(horizontal = 6.dp, vertical = 6.dp)
+        )
+    }
+    when {
+        err -> DevCard(Modifier.clickable { tick++ }) {
+            Text("โหลดประวัติไม่สำเร็จ", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = DevC.R)
+            Text("แตะเพื่อลองใหม่ (ตรวจสอบอินเทอร์เน็ตและสิทธิ์อ่านข้อมูล)", fontSize = 11.5.sp, color = DevC.S, modifier = Modifier.padding(top = 4.dp))
+        }
+        l == null -> DevCard { Text("กำลังโหลด...", fontSize = 13.sp, color = DevC.S) }
+        l.isEmpty() -> DevCard {
+            Text("ยังไม่มีประวัติ", fontSize = 13.sp, color = DevC.S)
+            Text("ทุกครั้งที่ผูกเขตหรือเลิกผูกเขต ระบบจะบันทึกไว้ที่นี่", fontSize = 11.sp, color = DevC.S, modifier = Modifier.padding(top = 6.dp))
+        }
+        else -> l.forEach { a -> DevAuditCard(a) }
+    }
+}
+
+@Composable
+private fun DevAuditCard(a: DevAuditItem) {
+    val unlink = a.action == "unlink_zone"
+    DevCard {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(Modifier.weight(1f)) {
+                Text(
+                    if (a.names.isEmpty()) "-" else a.names.joinToString(" + "),
+                    fontSize = 13.5.sp, fontWeight = FontWeight.Bold, color = DevC.T, maxLines = 2, overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    (if (a.by.isEmpty()) "ไม่ทราบผู้ทำ" else a.by) + " · " + devAuditTime(a.atMillis),
+                    fontSize = 11.5.sp, color = DevC.S, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp)
+                )
+            }
+            if (unlink) DevBadge(devAuditLabel(a.action), DevC.RL, DevC.R)
+            else if (a.action == "link_zones") DevBadge(devAuditLabel(a.action), DevC.PL, DevC.P)
+            else if (a.action == "create_zone") DevBadge(devAuditLabel(a.action), DevC.GnL, DevC.Gn)
+            else if (a.action == "edit_zone") DevBadge(devAuditLabel(a.action), DevC.OL, DevC.O)
+            else if (a.action == "move_shop" || a.action == "copy_shop" || a.action == "set_zone") DevBadge(devAuditLabel(a.action), DevC.PL, DevC.P)
+            else DevBadge(devAuditLabel(a.action), Color(0xFFF1F5F9), DevC.S)
+        }
+        a.details.forEach { line ->
+            Text(line, fontSize = 11.5.sp, color = DevC.T, modifier = Modifier.padding(top = 4.dp))
+        }
+        if (a.groupId.isNotEmpty()) {
+            Text("รหัสกลุ่มหลังบ้าน: " + a.groupId, fontSize = 11.sp, color = DevC.S, modifier = Modifier.padding(top = 6.dp))
+        }
+    }
+}
+KT_EOF
+cat > "$D/ui/DevZones.kt" <<'KT_EOF'
+package com.nimit.delivery.ui
+
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.nimit.delivery.data.DevAuditItem
+import com.nimit.delivery.data.DevDetailRepo
+import com.nimit.delivery.data.DevFranchise
+import com.nimit.delivery.data.DevOrderRow
+import com.nimit.delivery.data.DevShopRow
+import com.nimit.delivery.data.DevZoneDetail
+import com.nimit.delivery.data.DevRepo
+import com.nimit.delivery.data.DevZoneRepo
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
+
+private data class DevCodeInfo(val zone: String, val phone: String, val code: String)
+
+private val devGroupColors = listOf(
+    Color(0xFF0C4AA6), Color(0xFF16A34A), Color(0xFFEA580C), Color(0xFF7C3AED), Color(0xFFDB2777)
+)
+
+private fun devGroupColor(g: String): Color = devGroupColors[Math.abs(g.hashCode() % devGroupColors.size)]
+
+// หน้าแรก: การ์ดเขตแฟรนไชส์ (อ่านจาก franchises + shops) พร้อมปุ่มผูกเขต / เลิกผูก
+@Composable
+fun DevZonesScreen() {
+    var list by remember { mutableStateOf<List<DevFranchise>?>(null) }
+    var err by remember { mutableStateOf(false) }
+    var tick by remember { mutableStateOf(0) }
+    var showLink by remember { mutableStateOf(false) }
+    var unlinkTarget by remember { mutableStateOf<DevFranchise?>(null) }
+    var unlinkBusy by remember { mutableStateOf(false) }
+    var showForm by remember { mutableStateOf(false) }
+    var formTarget by remember { mutableStateOf<DevFranchise?>(null) }
+    var codeInfo by remember { mutableStateOf<DevCodeInfo?>(null) }
+    var detailId by remember { mutableStateOf<String?>(null) }
+    var linkInitial by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var notice by remember { mutableStateOf("") }
+    var noticeErr by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+
+    LaunchedEffect(tick) {
+        list = null
+        err = false
+        try {
+            list = DevRepo.franchises()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            err = true
+        }
+    }
+    val l = list
+    val canLink = l != null && l.size >= 2
+    val detailF = if (l != null) l.firstOrNull { it.id == detailId } else null
+    if (detailF != null) BackHandler { detailId = null }
+
+    if (detailF != null && l != null) {
+        DevZoneDetailScreen(
+            f = detailF, all = l, notice = notice, noticeErr = noticeErr,
+            onBack = { detailId = null },
+            onEdit = {
+                formTarget = detailF
+                showForm = true
+            },
+            onLink = {
+                linkInitial = setOf(detailF.id)
+                showLink = true
+            },
+            onUnlink = { unlinkTarget = detailF },
+            onReload = { tick++ }
+        )
+    } else {
+    Row(Modifier.fillMaxWidth().padding(bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            if (l == null) "เขตแฟรนไชส์ทั้งหมด" else "เขตแฟรนไชส์ทั้งหมด (" + l.size + ")",
+            fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, color = DevC.T,
+            maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f)
+        )
+        Box(
+            Modifier
+                .padding(end = 8.dp)
+                .height(36.dp)
+                .clip(RoundedCornerShape(20.dp))
+                .background(if (canLink) DevC.PL else Color(0xFFF1F5F9))
+                .clickable(enabled = canLink) {
+                    linkInitial = emptySet()
+                    showLink = true
+                }
+                .padding(horizontal = 14.dp),
+            contentAlignment = Alignment.Center
+        ) { Text("ผูกเขต", color = if (canLink) DevC.P else DevC.S, fontSize = 13.sp, fontWeight = FontWeight.Bold) }
+        Box(
+            Modifier.height(36.dp).clip(RoundedCornerShape(20.dp)).background(DevC.P)
+                .clickable {
+                    formTarget = null
+                    showForm = true
+                }
+                .padding(horizontal = 14.dp),
+            contentAlignment = Alignment.Center
+        ) { Text("+ เพิ่มเขต", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold) }
+    }
+    if (notice.isNotEmpty()) {
+        DevCard {
+            Text(notice, fontSize = 12.5.sp, fontWeight = FontWeight.Bold, color = if (noticeErr) DevC.R else DevC.Gn)
+        }
+    }
+    when {
+        err -> DevCard(Modifier.clickable { tick++ }) {
+            Text("โหลดข้อมูลไม่สำเร็จ", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = DevC.R)
+            Text("แตะเพื่อลองใหม่ (ตรวจสอบอินเทอร์เน็ตและสิทธิ์อ่านข้อมูล)", fontSize = 11.5.sp, color = DevC.S, modifier = Modifier.padding(top = 4.dp))
+        }
+        l == null -> DevCard { Text("กำลังโหลด...", fontSize = 13.sp, color = DevC.S) }
+        l.isEmpty() -> DevCard {
+            Text("ยังไม่มีเขต", fontSize = 13.sp, color = DevC.S)
+            Text(
+                "เพิ่มเขตหลังคุยกับผู้สมัครทางไลน์ แล้วใช้ปุ่ม \"ผูกเขต\" เพื่อให้หลายเขตใช้หลังบ้านแอดมินเดียวกัน",
+                fontSize = 11.sp, color = DevC.S, lineHeight = 17.sp, modifier = Modifier.padding(top = 6.dp)
+            )
+        }
+        else -> l.forEachIndexed { i, f ->
+            val prevSame = f.groupId.isNotEmpty() && i > 0 && l[i - 1].groupId == f.groupId
+            val nextSame = f.groupId.isNotEmpty() && i < l.size - 1 && l[i + 1].groupId == f.groupId
+            DevZoneRow(
+                f, l, prevSame, nextSame,
+                { detailId = f.id },
+                {
+                    formTarget = f
+                    showForm = true
+                }
+            ) { unlinkTarget = f }
+        }
+    }
+    }
+
+    if (showForm) {
+        DevZoneFormDialog(
+            target = formTarget,
+            onDismiss = { showForm = false },
+            onSaved = { info, msg ->
+                showForm = false
+                formTarget = null
+                notice = msg
+                noticeErr = false
+                codeInfo = info
+                tick++
+            }
+        )
+    }
+    val ci = codeInfo
+    if (ci != null) {
+        val clip = LocalClipboardManager.current
+        AlertDialog(
+            onDismissRequest = { codeInfo = null },
+            containerColor = Color.White,
+            title = { Text("รหัสเข้าแอปแอดมิน", fontSize = 17.sp, fontWeight = FontWeight.ExtraBold) },
+            text = {
+                Column {
+                    Text("เขต: " + ci.zone, fontSize = 13.sp, color = DevC.T)
+                    Text("เบอร์: " + ci.phone, fontSize = 13.sp, color = DevC.T, modifier = Modifier.padding(top = 2.dp))
+                    Text(
+                        ci.code, fontSize = 24.sp, fontWeight = FontWeight.Black, color = DevC.P,
+                        modifier = Modifier.padding(top = 10.dp, bottom = 10.dp)
+                    )
+                    Text(
+                        "ส่งรหัสนี้ให้เจ้าของเขตตอนนี้ เมื่อปิดหน้าต่างนี้จะดูรหัสซ้ำไม่ได้ (ตั้งรหัสใหม่ได้ที่ปุ่มแก้ไข)",
+                        fontSize = 12.sp, color = DevC.S, lineHeight = 18.sp
+                    )
+                }
+            },
+            confirmButton = { TextButton(onClick = { codeInfo = null }) { Text("ปิด", color = DevC.P, fontWeight = FontWeight.Bold) } },
+            dismissButton = {
+                TextButton(onClick = { clip.setText(AnnotatedString(ci.code)) }) { Text("คัดลอกรหัส", color = DevC.S) }
+            }
+        )
+    }
+    if (showLink && l != null) {
+        DevLinkDialog(
+            all = l,
+            initial = linkInitial,
+            onDismiss = { showLink = false },
+            onDone = {
+                showLink = false
+                notice = "ผูกเขตเรียบร้อย และบันทึกประวัติแล้ว"
+                noticeErr = false
+                tick++
+            }
+        )
+    }
+    val t = unlinkTarget
+    if (t != null) {
+        AlertDialog(
+            onDismissRequest = { if (!unlinkBusy) unlinkTarget = null },
+            containerColor = Color.White,
+            title = { Text("เลิกผูก " + t.name + "?", fontSize = 16.sp, fontWeight = FontWeight.ExtraBold) },
+            text = {
+                Text(
+                    "เขตนี้จะไม่ใช้หลังบ้านแอดมินร่วมกับเขตอื่นอีก ร้านและออเดอร์เดิมไม่ถูกลบ",
+                    fontSize = 13.sp, color = DevC.S, lineHeight = 20.sp
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = !unlinkBusy,
+                    onClick = {
+                        unlinkBusy = true
+                        scope.launch {
+                            val r = DevRepo.unlinkZone(t, l ?: emptyList())
+                            unlinkBusy = false
+                            unlinkTarget = null
+                            if (r == null) {
+                                notice = "เลิกผูก " + t.name + " แล้ว และบันทึกประวัติแล้ว"
+                                noticeErr = false
+                                tick++
+                            } else {
+                                notice = r
+                                noticeErr = true
+                            }
+                        }
+                    }
+                ) { Text(if (unlinkBusy) "กำลังบันทึก..." else "เลิกผูก", color = DevC.R, fontWeight = FontWeight.Bold) }
+            },
+            dismissButton = {
+                TextButton(enabled = !unlinkBusy, onClick = { unlinkTarget = null }) { Text("ยกเลิก", color = DevC.S) }
+            }
+        )
+    }
+}
+
+// แถวการ์ด + เส้นเชื่อมด้านหน้า (จุดที่การ์ดของเขตที่ผูกกัน เส้นต่อลงไปหาการ์ดถัดไปของกลุ่มเดียวกัน)
+@Composable
+private fun DevZoneRow(
+    f: DevFranchise,
+    all: List<DevFranchise>,
+    prevSame: Boolean,
+    nextSame: Boolean,
+    onOpen: () -> Unit,
+    onEdit: () -> Unit,
+    onUnlink: () -> Unit
+) {
+    val col = if (f.groupId.isEmpty()) Color.Transparent else devGroupColor(f.groupId)
+    Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
+        Box(
+            Modifier
+                .width(18.dp)
+                .fillMaxHeight()
+                .drawBehind {
+                    if (f.groupId.isNotEmpty()) {
+                        val cx = 6.dp.toPx()
+                        val cy = (size.height - 12.dp.toPx()) / 2f
+                        val sw = 3.dp.toPx()
+                        if (prevSame) drawLine(col, Offset(cx, 0f), Offset(cx, cy), strokeWidth = sw)
+                        if (nextSame) drawLine(col, Offset(cx, cy), Offset(cx, size.height), strokeWidth = sw)
+                        drawCircle(col, radius = 5.dp.toPx(), center = Offset(cx, cy))
+                    }
+                }
+        )
+        Column(Modifier.weight(1f)) { DevZoneCard(f, all, col, onOpen, onEdit, onUnlink) }
+    }
+}
+
+@Composable
+private fun DevZoneCard(f: DevFranchise, all: List<DevFranchise>, col: Color, onOpen: () -> Unit, onEdit: () -> Unit, onUnlink: () -> Unit) {
+    val fee = if (f.monthlyFee > 0) " · ค่าแฟรนไชส์/เดือน ฿" + String.format("%,.0f", f.monthlyFee) else ""
+    val sub = (if (f.province.isEmpty()) "ไม่ระบุพื้นที่" else f.province) + " · " + (if (f.phone.isEmpty()) "ไม่มีเบอร์" else f.phone) + " · " + f.shopCount + " ร้าน" + fee
+    val grouped = f.groupId.isNotEmpty()
+    DevCard(Modifier.clickable { onOpen() }) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(Modifier.weight(1f)) {
+                Text(f.name, fontSize = 13.5.sp, fontWeight = FontWeight.Bold, color = DevC.T, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(sub, fontSize = 11.5.sp, color = DevC.S, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 1.dp))
+            }
+            when (f.status) {
+                "active" -> DevBadge("ใช้งาน", DevC.GnL, DevC.Gn)
+                "suspended" -> DevBadge("ระงับ", DevC.RL, DevC.R)
+                else -> DevBadge(if (f.status.isEmpty()) "-" else f.status, Color(0xFFF1F5F9), DevC.S)
+            }
+        }
+        Row(
+            Modifier.padding(top = 8.dp).fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            if (f.zonePoints >= 3) DevBadge("มีเขตแล้ว", DevC.GnL, DevC.Gn)
+            else DevBadge("ยังไม่กำหนดเขต", Color(0xFFF1F5F9), DevC.S)
+            if (!f.hasCode) DevBadge("ยังไม่ตั้งรหัส", DevC.OL, DevC.O)
+            if (grouped) DevBadge("หลังบ้านร่วม", col.copy(alpha = 0.12f), col)
+            Box(Modifier.weight(1f))
+            Text(
+                "แก้ไข", fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = DevC.P,
+                modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable { onEdit() }.padding(horizontal = 6.dp, vertical = 4.dp)
+            )
+            if (grouped) {
+                Text(
+                    "เลิกผูก", fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = DevC.R,
+                    modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable { onUnlink() }.padding(horizontal = 6.dp, vertical = 4.dp)
+                )
+            }
+        }
+        if (grouped) {
+            val others = all.filter { it.groupId == f.groupId && it.id != f.id }.joinToString(", ") { it.name }
+            if (others.isNotEmpty()) {
+                Text("ใช้หลังบ้านร่วมกับ: " + others, fontSize = 11.sp, color = DevC.S, modifier = Modifier.padding(top = 6.dp))
+            }
+        }
+    }
+}
+
+@Composable
+private fun DevLinkDialog(all: List<DevFranchise>, initial: Set<String>, onDismiss: () -> Unit, onDone: () -> Unit) {
+    var sel by remember { mutableStateOf(initial) }
+    var busy by remember { mutableStateOf(false) }
+    var err by remember { mutableStateOf("") }
+    val scope = rememberCoroutineScope()
+    AlertDialog(
+        onDismissRequest = { if (!busy) onDismiss() },
+        containerColor = Color.White,
+        title = { Text("ผูกเขต", fontSize = 17.sp, fontWeight = FontWeight.ExtraBold) },
+        text = {
+            Column {
+                Text(
+                    "เลือกเขตที่จะให้ใช้หลังบ้านแอดมินร่วมกัน (อย่างน้อย 2 เขต) ร้านและข้อมูลอื่นยังแยกตามเขตเหมือนเดิม ถ้าเลือกเขตที่ผูกอยู่แล้ว กลุ่มเดิมจะรวมเข้าด้วย",
+                    fontSize = 12.sp, color = DevC.S, lineHeight = 18.sp
+                )
+                Column(Modifier.heightIn(max = 320.dp).verticalScroll(rememberScrollState()).padding(top = 10.dp)) {
+                    all.forEach { f ->
+                        val on = f.id in sel
+                        Row(
+                            Modifier.fillMaxWidth().clickable(enabled = !busy) { sel = if (on) sel - f.id else sel + f.id }.padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Checkbox(checked = on, onCheckedChange = null, colors = CheckboxDefaults.colors(checkedColor = DevC.P))
+                            Column(Modifier.padding(start = 8.dp)) {
+                                Text(f.name, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = DevC.T)
+                                if (f.groupId.isNotEmpty()) {
+                                    Text("ผูกอยู่แล้ว", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = devGroupColor(f.groupId))
+                                }
+                            }
+                        }
+                    }
+                }
+                if (err.isNotEmpty()) {
+                    Text(err, fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold, color = DevC.R, modifier = Modifier.padding(top = 8.dp))
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = !busy && sel.size >= 2,
+                onClick = {
+                    busy = true
+                    err = ""
+                    scope.launch {
+                        val r = DevRepo.linkZones(sel.toList(), all)
+                        busy = false
+                        if (r == null) onDone() else err = r
+                    }
+                }
+            ) { Text(if (busy) "กำลังบันทึก..." else "ผูก (" + sel.size + ")", color = DevC.P, fontWeight = FontWeight.Bold) }
+        },
+        dismissButton = {
+            TextButton(enabled = !busy, onClick = onDismiss) { Text("ยกเลิก", color = DevC.S) }
+        }
+    )
+}
+
+private fun devOrderStatus(s: String): String = when (s) {
+    "pending" -> "รอร้านรับ"
+    "accepted" -> "ร้านรับแล้ว"
+    "picking" -> "กำลังจัดของ"
+    "arrived" -> "ถึงจุดรับ"
+    "delivering" -> "กำลังส่ง"
+    "done" -> "สำเร็จ"
+    "rejected" -> "ร้านปฏิเสธ"
+    "cancelled" -> "ยกเลิก"
+    else -> s
+}
+
+// หน้ารายละเอียดเขต (กดการ์ดเขต): ตั้งค่าเขต + หลังบ้านร่วม + ร้านในเขต + ออเดอร์ล่าสุด + ประวัติของเขตนี้
+@Composable
+private fun DevZoneDetailScreen(
+    f: DevFranchise,
+    all: List<DevFranchise>,
+    notice: String,
+    noticeErr: Boolean,
+    onBack: () -> Unit,
+    onEdit: () -> Unit,
+    onLink: () -> Unit,
+    onUnlink: () -> Unit,
+    onReload: () -> Unit
+) {
+    var showMap by remember { mutableStateOf(false) }
+    var detail by remember { mutableStateOf<DevZoneDetail?>(null) }
+    var err by remember { mutableStateOf(false) }
+    var tick by remember { mutableStateOf(0) }
+    var moveShop by remember { mutableStateOf<DevShopRow?>(null) }
+    var moveNotice by remember { mutableStateOf("") }
+    var moveErr by remember { mutableStateOf(false) }
+    LaunchedEffect(f, tick) {
+        detail = null
+        err = false
+        try {
+            detail = DevDetailRepo.load(f)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            err = true
+        }
+    }
+    val grouped = f.groupId.isNotEmpty()
+    val col = if (grouped) devGroupColor(f.groupId) else DevC.S
+    val others = all.filter { grouped && it.groupId == f.groupId && it.id != f.id }
+
+    Row(Modifier.fillMaxWidth().padding(bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            "‹ กลับ", fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = DevC.P,
+            modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable { onBack() }.padding(end = 10.dp, top = 6.dp, bottom = 6.dp)
+        )
+        Text(
+            f.name, fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, color = DevC.T,
+            maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f)
+        )
+        when (f.status) {
+            "active" -> DevBadge("ใช้งาน", DevC.GnL, DevC.Gn)
+            "suspended" -> DevBadge("ระงับ", DevC.RL, DevC.R)
+            else -> DevBadge(if (f.status.isEmpty()) "-" else f.status, Color(0xFFF1F5F9), DevC.S)
+        }
+    }
+    if (notice.isNotEmpty()) {
+        DevCard { Text(notice, fontSize = 12.5.sp, fontWeight = FontWeight.Bold, color = if (noticeErr) DevC.R else DevC.Gn) }
+    }
+    if (moveNotice.isNotEmpty()) {
+        DevCard { Text(moveNotice, fontSize = 12.5.sp, fontWeight = FontWeight.Bold, color = if (moveErr) DevC.R else DevC.Gn) }
+    }
+
+    DevCard {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("ข้อมูลเขต", fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = DevC.P, modifier = Modifier.weight(1f))
+            Text(
+                "แก้ไข", fontSize = 12.5.sp, fontWeight = FontWeight.ExtraBold, color = DevC.P,
+                modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable { onEdit() }.padding(horizontal = 8.dp, vertical = 4.dp)
+            )
+        }
+        DevInfoRow("ชื่อเขต (ลูกค้าเห็น)", f.name)
+        DevInfoRow("พื้นที่", if (f.province.isEmpty()) "-" else f.province)
+        DevInfoRow("เบอร์ (เข้าแอปแอดมิน)", if (f.phone.isEmpty()) "-" else f.phone)
+        DevInfoRow("รหัสเข้าใช้", if (f.hasCode) "ตั้งแล้ว" else "ยังไม่ตั้ง")
+        DevInfoRow("ค่าแฟรนไชส์/เดือน", if (f.monthlyFee > 0) "฿" + String.format("%,.0f", f.monthlyFee) else "-")
+        DevInfoRow("เขตบนแผนที่", if (f.zonePoints >= 3) "มีเขตแล้ว (" + f.zonePoints + " จุด)" else "ยังไม่กำหนด")
+        Text(
+            if (f.zonePoints >= 3) "แก้ไขเขตบนแผนที่" else "กำหนดเขตบนแผนที่",
+            fontSize = 12.5.sp, fontWeight = FontWeight.ExtraBold, color = DevC.P,
+            modifier = Modifier.padding(top = 6.dp).clip(RoundedCornerShape(8.dp)).clickable { showMap = true }.padding(vertical = 4.dp, horizontal = 2.dp)
+        )
+    }
+
+    DevCard {
+        Text("หลังบ้านแอดมิน", fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = DevC.P, modifier = Modifier.padding(bottom = 8.dp))
+        if (grouped) {
+            DevBadge("ใช้หลังบ้านร่วมกับเขตอื่น", col.copy(alpha = 0.12f), col)
+            Text(
+                "ร่วมกับ: " + (if (others.isEmpty()) "-" else others.joinToString(", ") { it.name }),
+                fontSize = 12.sp, color = DevC.T, modifier = Modifier.padding(top = 8.dp)
+            )
+            Text(
+                "เลิกผูกเขตนี้", fontSize = 12.5.sp, fontWeight = FontWeight.Bold, color = DevC.R,
+                modifier = Modifier.padding(top = 6.dp).clip(RoundedCornerShape(8.dp)).clickable { onUnlink() }.padding(vertical = 4.dp, horizontal = 2.dp)
+            )
+        } else {
+            Text("แยกหลังบ้านของตัวเอง", fontSize = 12.sp, color = DevC.S)
+            if (all.size >= 2) {
+                Text(
+                    "ผูกกับเขตอื่น", fontSize = 12.5.sp, fontWeight = FontWeight.Bold, color = DevC.P,
+                    modifier = Modifier.padding(top = 6.dp).clip(RoundedCornerShape(8.dp)).clickable { onLink() }.padding(vertical = 4.dp, horizontal = 2.dp)
+                )
+            }
+        }
+    }
+
+    val d = detail
+    if (err) {
+        DevCard(Modifier.clickable { tick++ }) {
+            Text("โหลดข้อมูลหลังบ้านของเขตไม่สำเร็จ", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = DevC.R)
+            Text("แตะเพื่อลองใหม่ (ตรวจสอบอินเทอร์เน็ตและสิทธิ์อ่านข้อมูล)", fontSize = 11.5.sp, color = DevC.S, modifier = Modifier.padding(top = 4.dp))
+        }
+    } else if (d == null) {
+        DevCard { Text("กำลังโหลดข้อมูลหลังบ้าน...", fontSize = 13.sp, color = DevC.S) }
+    } else {
+        DevCard {
+            Text("ร้านค้าในเขต (" + d.shops.size + ")", fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = DevC.P, modifier = Modifier.padding(bottom = 6.dp))
+            if (d.shops.isEmpty()) Text("ยังไม่มีร้านในเขตนี้", fontSize = 12.sp, color = DevC.S)
+            d.shops.forEach { s -> DevShopLine(s, all, f.id) { moveShop = s } }
+        }
+        DevCard {
+            Text("ออเดอร์ล่าสุดของเขต", fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = DevC.P, modifier = Modifier.padding(bottom = 6.dp))
+            val o = d.orders
+            if (o == null) {
+                Text("โหลดออเดอร์ไม่สำเร็จ", fontSize = 12.sp, color = DevC.R)
+            } else if (o.isEmpty()) {
+                Text("ไม่พบออเดอร์ของเขตนี้ใน 200 ออเดอร์ล่าสุดของระบบ", fontSize = 12.sp, color = DevC.S)
+            } else {
+                val doneList = o.filter { it.status == "done" }
+                Text(
+                    "จาก 200 ออเดอร์ล่าสุดของระบบ: " + o.size + " ของเขตนี้ · สำเร็จ " + doneList.size +
+                        " · ยอดที่สำเร็จ ฿" + String.format("%,.0f", doneList.sumOf { it.total }),
+                    fontSize = 11.5.sp, color = DevC.S, lineHeight = 17.sp, modifier = Modifier.padding(bottom = 6.dp)
+                )
+                o.take(10).forEach { x -> DevOrderLine(x) }
+            }
+        }
+        DevCard {
+            Text("ประวัติของเขตนี้", fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = DevC.P, modifier = Modifier.padding(bottom = 6.dp))
+            val au = d.audit
+            if (au == null) {
+                Text("โหลดประวัติไม่สำเร็จ", fontSize = 12.sp, color = DevC.R)
+            } else if (au.isEmpty()) {
+                Text("ยังไม่มีประวัติ", fontSize = 12.sp, color = DevC.S)
+            } else {
+                au.forEach { a -> DevAuditLine(a) }
+            }
+        }
+    }
+    if (showMap) {
+        DevZoneMapEditor(
+            f = f, all = all,
+            onDismiss = { showMap = false },
+            onSaved = { m ->
+                showMap = false
+                moveNotice = m
+                moveErr = false
+                onReload()
+            }
+        )
+    }
+    val ms = moveShop
+    if (ms != null) {
+        DevMoveShopDialog(
+            shop = ms, from = f, all = all,
+            onDismiss = { moveShop = null },
+            onDone = { msg ->
+                moveShop = null
+                moveNotice = msg
+                moveErr = false
+                tick++
+                onReload()
+            }
+        )
+    }
+}
+
+@Composable
+private fun DevInfoRow(label: String, value: String) {
+    Row(Modifier.fillMaxWidth().padding(vertical = 3.dp), verticalAlignment = Alignment.Top) {
+        Text(label, fontSize = 12.sp, color = DevC.S, modifier = Modifier.weight(1f))
+        Text(value, fontSize = 12.5.sp, fontWeight = FontWeight.Bold, color = DevC.T, modifier = Modifier.weight(1f))
+    }
+}
+
+@Composable
+private fun DevShopLine(s: DevShopRow, all: List<DevFranchise>, thisZoneId: String, onMove: () -> Unit) {
+    val others = s.zoneIds.filter { it != thisZoneId }.map { id -> all.firstOrNull { it.id == id }?.name ?: "เขตอื่น" }
+    Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(s.name, fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold, color = DevC.T, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+            when (s.isOpen) {
+                true -> DevBadge("เปิด", DevC.GnL, DevC.Gn)
+                false -> DevBadge("ปิด", Color(0xFFF1F5F9), DevC.S)
+                null -> DevBadge("-", Color(0xFFF1F5F9), DevC.S)
+            }
+            Text(
+                "ย้าย/คัดลอก", fontSize = 11.5.sp, fontWeight = FontWeight.ExtraBold, color = DevC.P,
+                modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable { onMove() }.padding(horizontal = 6.dp, vertical = 4.dp)
+            )
+        }
+        if (others.isNotEmpty()) {
+            Text("อยู่หลายเขต: ร่วมกับ " + others.joinToString(", "), fontSize = 11.sp, color = DevC.O)
+        }
+    }
+}
+
+// ย้ายร้านไปอีกเขต: ย้ายไปเลย (ออกจากเขตนี้) หรือคัดลอก (ให้ร้านอยู่ทั้งสองเขต)
+@Composable
+private fun DevMoveShopDialog(
+    shop: DevShopRow,
+    from: DevFranchise,
+    all: List<DevFranchise>,
+    onDismiss: () -> Unit,
+    onDone: (String) -> Unit
+) {
+    val targets = all.filter { it.id != from.id && it.id !in shop.zoneIds }
+    var copy by remember { mutableStateOf(false) }
+    var targetId by remember { mutableStateOf("") }
+    var busy by remember { mutableStateOf(false) }
+    var err by remember { mutableStateOf("") }
+    val scope = rememberCoroutineScope()
+    AlertDialog(
+        onDismissRequest = { if (!busy) onDismiss() },
+        containerColor = Color.White,
+        title = { Text("ย้ายร้าน", fontSize = 17.sp, fontWeight = FontWeight.ExtraBold) },
+        text = {
+            Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
+                Text(shop.name, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = DevC.T)
+                Text("จากเขต " + from.name, fontSize = 12.sp, color = DevC.S, modifier = Modifier.padding(bottom = 10.dp))
+                Text("วิธี", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = DevC.S, modifier = Modifier.padding(bottom = 6.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(bottom = 6.dp)) {
+                    DevFormChip("ย้ายไปเลย", !copy, DevC.P) { copy = false }
+                    DevFormChip("คัดลอก (อยู่ 2 เขต)", copy, DevC.Gn) { copy = true }
+                }
+                Text(
+                    if (copy) "ร้านจะอยู่ทั้งเขตนี้และเขตปลายทาง (ขึ้นแสดงทั้งสองที่)" else "ร้านจะออกจากเขตนี้ ไปอยู่เขตปลายทางอย่างเดียว",
+                    fontSize = 11.sp, color = DevC.S, lineHeight = 16.sp, modifier = Modifier.padding(bottom = 10.dp)
+                )
+                Text("เขตปลายทาง", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = DevC.S, modifier = Modifier.padding(bottom = 6.dp))
+                if (targets.isEmpty()) {
+                    Text("ไม่มีเขตอื่นให้เลือก (ร้านนี้อยู่ครบทุกเขตแล้ว หรือมีเขตเดียว)", fontSize = 12.sp, color = DevC.S)
+                } else {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        targets.forEach { z -> DevFormChip(z.name, targetId == z.id, DevC.P) { targetId = z.id } }
+                    }
+                }
+                if (err.isNotEmpty()) {
+                    Text(err, fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold, color = DevC.R, modifier = Modifier.padding(top = 8.dp))
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = !busy && targetId.isNotEmpty(),
+                onClick = {
+                    val to = targets.firstOrNull { it.id == targetId }
+                    if (to == null) {
+                        err = "กรุณาเลือกเขตปลายทาง"
+                    } else {
+                        busy = true
+                        err = ""
+                        scope.launch {
+                            val r = DevDetailRepo.moveShop(shop.id, shop.name, from, to, copy)
+                            busy = false
+                            if (r == null) {
+                                onDone((if (copy) "คัดลอก " else "ย้าย ") + shop.name + " ไปเขต " + to.name + " แล้ว และบันทึกประวัติแล้ว")
+                            } else {
+                                err = r
+                            }
+                        }
+                    }
+                }
+            ) { Text(if (busy) "กำลังบันทึก..." else if (copy) "คัดลอก" else "ย้าย", color = DevC.P, fontWeight = FontWeight.Bold) }
+        },
+        dismissButton = { TextButton(enabled = !busy, onClick = onDismiss) { Text("ยกเลิก", color = DevC.S) } }
+    )
+}
+
+@Composable
+private fun DevOrderLine(o: DevOrderRow) {
+    Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text(o.orderId, fontSize = 12.5.sp, fontWeight = FontWeight.Bold, color = DevC.T, maxLines = 1)
+            Text(o.shopName + " · " + devOrderStatus(o.status), fontSize = 11.sp, color = DevC.S, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        Text("฿" + String.format("%,.0f", o.total), fontSize = 12.5.sp, fontWeight = FontWeight.Bold, color = DevC.T)
+    }
+}
+
+@Composable
+private fun DevAuditLine(a: DevAuditItem) {
+    val label = when (a.action) {
+        "link_zones" -> "ผูกเขต"
+        "unlink_zone" -> "เลิกผูกเขต"
+        "create_zone" -> "เพิ่มเขต"
+        "edit_zone" -> "แก้ไขเขต"
+        "move_shop" -> "ย้ายร้าน"
+        "copy_shop" -> "คัดลอกร้าน"
+        "set_zone" -> "กำหนดเขตบนแผนที่"
+        else -> a.action
+    }
+    val time = if (a.atMillis <= 0L) "กำลังบันทึก"
+    else java.text.SimpleDateFormat("dd/MM/yyyy HH:mm", java.util.Locale.US).format(java.util.Date(a.atMillis))
+    Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+        Text(label + " · " + time, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = DevC.T)
+        Text(if (a.by.isEmpty()) "ไม่ทราบผู้ทำ" else a.by, fontSize = 11.sp, color = DevC.S)
+        a.details.forEach { line -> Text(line, fontSize = 11.sp, color = DevC.T) }
+    }
+}
+
+// ฟอร์มเพิ่มเขต (target = null) / แก้ไขเขต: ชื่อเขต พื้นที่ เบอร์ (ใช้เข้าแอปแอดมิน) รหัส ค่าแฟรนไชส์ สถานะ
+@Composable
+private fun DevZoneFormDialog(target: DevFranchise?, onDismiss: () -> Unit, onSaved: (DevCodeInfo?, String) -> Unit) {
+    val editing = target != null
+    var name by remember { mutableStateOf(target?.name ?: "") }
+    var province by remember { mutableStateOf(target?.province ?: "") }
+    var phone by remember { mutableStateOf(target?.phone ?: "") }
+    var fee by remember {
+        mutableStateOf(if (target != null && target.monthlyFee > 0) String.format("%.0f", target.monthlyFee) else "")
+    }
+    var status by remember { mutableStateOf(if (target?.status == "suspended") "suspended" else "active") }
+    var changeCode by remember { mutableStateOf(!editing) }
+    var code by remember { mutableStateOf(DevZoneRepo.generateCode()) }
+    var err by remember { mutableStateOf("") }
+    var busy by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+
+    fun save() {
+        val feeNum = if (fee.isBlank()) 0.0 else (fee.trim().toDoubleOrNull() ?: -1.0)
+        if (name.isBlank()) { err = "กรุณาใส่ชื่อเขต"; return }
+        if (!DevZoneRepo.validPhone(phone)) { err = "เบอร์โทรไม่ถูกต้อง (ตัวเลข 9-10 หลัก ขึ้นต้นด้วย 0)"; return }
+        if (feeNum < 0.0) { err = "ค่าแฟรนไชส์ต้องเป็นตัวเลข"; return }
+        if (changeCode && code.trim().length < 6) { err = "รหัสต้องยาวอย่างน้อย 6 ตัวอักษร"; return }
+        err = ""
+        busy = true
+        scope.launch {
+            val phoneClean = DevZoneRepo.cleanPhone(phone)
+            val codeTrim = code.trim()
+            val r = if (target == null) {
+                DevZoneRepo.createZone(name, province, phone, feeNum, codeTrim)
+            } else {
+                DevZoneRepo.updateZone(target, name, province, phone, feeNum, status, if (changeCode) codeTrim else null)
+            }
+            busy = false
+            if (r == null) {
+                val info = if (changeCode) DevCodeInfo(name.trim(), phoneClean, codeTrim) else null
+                onSaved(info, if (target == null) "เพิ่มเขตเรียบร้อย และบันทึกประวัติแล้ว" else "แก้ไขเขตเรียบร้อย และบันทึกประวัติแล้ว")
+            } else {
+                err = r
+            }
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = { if (!busy) onDismiss() },
+        containerColor = Color.White,
+        title = { Text(if (editing) "แก้ไขเขต" else "เพิ่มเขต", fontSize = 17.sp, fontWeight = FontWeight.ExtraBold) },
+        text = {
+            Column(Modifier.heightIn(max = 440.dp).verticalScroll(rememberScrollState())) {
+                DevFormInput(name, { name = it }, "ชื่อเขต (ลูกค้าจะเห็นชื่อนี้)", "เช่น แม่จัน", KeyboardType.Text)
+                DevFormInput(province, { province = it }, "พื้นที่ / จังหวัด (ไม่บังคับ)", "เช่น เชียงราย", KeyboardType.Text)
+                DevFormInput(phone, { phone = it }, "เบอร์โทร (ใช้เข้าแอปแอดมิน)", "0812345678", KeyboardType.Phone)
+                DevFormInput(fee, { fee = it }, "ค่าแฟรนไชส์ต่อเดือน (ไม่บังคับ)", "เช่น 3000", KeyboardType.Number)
+                if (editing) {
+                    Text("สถานะ", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = DevC.S, modifier = Modifier.padding(bottom = 6.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(bottom = 12.dp)) {
+                        DevFormChip("ใช้งาน", status == "active", DevC.Gn) { status = "active" }
+                        DevFormChip("ระงับ", status == "suspended", DevC.R) { status = "suspended" }
+                    }
+                    Row(Modifier.padding(bottom = 10.dp)) {
+                        DevFormChip(if (changeCode) "ยกเลิกการตั้งรหัสใหม่" else "ตั้งรหัสใหม่", changeCode, DevC.P) { changeCode = !changeCode }
+                    }
+                }
+                if (changeCode) {
+                    DevFormInput(code, { code = it }, "รหัสเข้าแอปแอดมิน (อย่างน้อย 6 ตัว)", "", KeyboardType.Text)
+                    Text(
+                        "สุ่มรหัสใหม่", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = DevC.P,
+                        modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable(enabled = !busy) { code = DevZoneRepo.generateCode() }.padding(vertical = 4.dp)
+                    )
+                    Text(
+                        "รหัสไม่ถูกเก็บเป็นข้อความ (เก็บแบบเข้ารหัสทางเดียว) จะเห็นรหัสได้ครั้งเดียวหลังบันทึก",
+                        fontSize = 11.sp, color = DevC.S, lineHeight = 16.sp, modifier = Modifier.padding(top = 4.dp)
+                    )
+                } else if (editing && target != null) {
+                    Text(if (target.hasCode) "รหัสเดิมยังใช้ต่อ (ไม่เปลี่ยน)" else "เขตนี้ยังไม่มีรหัส ควรตั้งรหัสใหม่", fontSize = 11.sp, color = DevC.S)
+                }
+                if (err.isNotEmpty()) {
+                    Text(err, fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold, color = DevC.R, modifier = Modifier.padding(top = 8.dp))
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(enabled = !busy, onClick = { save() }) {
+                Text(if (busy) "กำลังบันทึก..." else "บันทึก", color = DevC.P, fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = { TextButton(enabled = !busy, onClick = onDismiss) { Text("ยกเลิก", color = DevC.S) } }
+    )
+}
+
+@Composable
+private fun DevFormChip(text: String, on: Boolean, accent: Color, onClick: () -> Unit) {
+    Text(
+        text, fontSize = 12.5.sp, fontWeight = FontWeight.Bold, maxLines = 1,
+        color = if (on) Color.White else accent,
+        modifier = Modifier
+            .clip(RoundedCornerShape(20.dp))
+            .background(if (on) accent else accent.copy(alpha = 0.1f))
+            .clickable { onClick() }
+            .padding(horizontal = 14.dp, vertical = 8.dp)
+    )
+}
+
+@Composable
+private fun DevFormInput(value: String, onChange: (String) -> Unit, label: String, hint: String, type: KeyboardType) {
+    Text(label, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = DevC.S, modifier = Modifier.padding(bottom = 6.dp))
+    BasicTextField(
+        value = value,
+        onValueChange = onChange,
+        singleLine = true,
+        keyboardOptions = KeyboardOptions(keyboardType = type),
+        textStyle = TextStyle(fontSize = 14.sp, color = DevC.T),
+        cursorBrush = SolidColor(DevC.P),
+        modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
+        decorationBox = { inner ->
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(48.dp)
+                    .border(BorderStroke(1.5.dp, Color(0xFFE2E8F0)), RoundedCornerShape(14.dp))
+                    .padding(horizontal = 16.dp),
+                contentAlignment = Alignment.CenterStart
+            ) {
+                if (value.isEmpty()) Text(hint, fontSize = 14.sp, color = Color(0xFF94A3B8))
+                inner()
+            }
+        }
+    )
+}
+
+@Composable
+fun DevBadge(text: String, bg: Color, fg: Color) {
+    Text(
+        text, fontSize = 10.5.sp, fontWeight = FontWeight.ExtraBold, color = fg, maxLines = 1,
+        modifier = Modifier.clip(RoundedCornerShape(20.dp)).background(bg).padding(horizontal = 8.dp, vertical = 3.dp)
+    )
+}
+KT_EOF
+echo "== ตรวจผล =="
+for f in data/DevZoneGeo.kt ui/DevZoneMap.kt data/DevAudit.kt ui/DevAudit.kt ui/DevZones.kt; do printf "%s  %s บรรทัด\n" "$f" "$(wc -l < "$D/$f")"; done
+grep -c "Powered by Esri" "$D/ui/DevZoneMap.kt" | sed "s/^/DevZoneMap: เครดิต Esri = /"
+git status --short
