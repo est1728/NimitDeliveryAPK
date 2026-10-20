@@ -137,99 +137,111 @@ fun RiderOrderScreen(store: RiderStore, orderId: String, fromHistory: Boolean, o
         }
     }
 
+    // rider7-layout: ตรงตาม rider.html (สีพื้นหลังเป็นโทนน้ำเงินตามที่ตั้งใจ)
     Column(Modifier.fillMaxSize().background(Color(0xFFE3EAF5))) {
-        OdTopBar(o?.orderId ?: "ออเดอร์", onBack)
+        WTopBar(o?.orderId ?: "รายละเอียดออเดอร์", onBack)
         if (o == null) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("ไม่พบออเดอร์", fontSize = 15.sp, color = C.Subtext) }
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("ไม่พบออเดอร์", fontSize = 14.sp, color = C.Subtext) }
         } else {
             Column(
-                Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 14.dp, vertical = 14.dp),
+                Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
-                Sec("รายละเอียด", OD_INFO) {
-                    IRow("รหัสคำสั่งซื้อ", o.orderId, false)
-                    IRow("จำนวน", o.qty().toString() + " รายการ", false)
-                    IRow("จากร้าน", o.s("shopName"), false)
-                    IRow("ชำระเงิน", if (o.s("paymentMethod") == "cash") "เงินสด" else "โอนเงิน", false)
-                    IRow("เวลา", fmtDateTime(o.created), true)
+                WSec("รายละเอียด") {
+                    WRow("รหัสคำสั่งซื้อ", o.orderId, false)
+                    WRow("จำนวน", o.qty().toString() + " รายการ", false)
+                    WRow("จากร้าน", o.s("shopName"), false)
+                    WRow("ชำระเงิน", if (o.s("paymentMethod") == "cash") "เงินสด" else "โอนเงิน", false)
+                    WRow("เวลา", fmtDateTime(o.created), true)
                 }
-                Sec("ข้อมูลร้านค้า", OD_STORE) {
-                    IRow("ชื่อ", o.s("shopName"), false)
-                    IRow("โทร", o.s("shopPhone"), false)
-                    IRow("ที่อยู่", o.s("shopAddress"), true)
-                    Spacer(Modifier.height(6.dp))
-                    Row(Modifier.fillMaxWidth().padding(bottom = 12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        ActBtn("โทร", OD_PHONE, C.Primary, Modifier.weight(1f)) { dial(o.s("shopPhone")) }
-                        ActBtn("นำทาง", OD_NAV, C.Primary, Modifier.weight(1f)) { navTo(o.n("shopLat").takeIf { it != 0.0 }, o.n("shopLng").takeIf { it != 0.0 }) }
+                WSec("ข้อมูลร้านค้า") {
+                    WRow("ชื่อ", o.s("shopName"), false)
+                    WRow("โทร", o.s("shopPhone"), false)
+                    WRow("ที่อยู่", o.s("shopAddress"), true)
+                    Spacer(Modifier.height(12.dp))
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        WBtn("โทรหาร้าน", OD_PHONE, Color(0xFFE8F0FE), C.Primary, Modifier.weight(1f), 0) { dial(o.s("shopPhone")) }
+                        WBtn("นำทาง", W_DIAMOND, Color(0xFFE8F0FE), C.Primary, Modifier.weight(1f), 0) { navTo(o.n("shopLat").takeIf { it != 0.0 }, o.n("shopLng").takeIf { it != 0.0 }) }
                     }
                 }
                 if (fromHistory) {
-                    Sec("ข้อมูลลูกค้า", OD_USER) { Text("ข้อมูลลูกค้าถูกซ่อนหลังจบงาน", fontSize = 15.sp, color = C.Subtext, modifier = Modifier.padding(vertical = 12.dp)) }
+                    WSec("ข้อมูลลูกค้า") {
+                        Text("ข้อมูลลูกค้าถูกซ่อนหลังจบงาน", fontSize = 12.sp, fontStyle = androidx.compose.ui.text.font.FontStyle.Italic, color = C.Subtext, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(10.dp))
+                    }
                 } else {
-                    Sec("ข้อมูลลูกค้า", OD_USER) {
-                        IRow("ชื่อ", o.cust("name"), false)
-                        IRow("โทร", o.cust("phone"), false)
-                        IRow("ที่อยู่", o.cust("address"), true)
-                        Spacer(Modifier.height(6.dp))
-                        Row(Modifier.fillMaxWidth().padding(bottom = 12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            ActBtn("โทร", OD_PHONE, C.Primary, Modifier.weight(1f)) { dial(o.cust("phone")) }
-                            ActBtn("นำทาง", OD_NAV, C.Primary, Modifier.weight(1f)) { navTo(o.custNum("lat"), o.custNum("lng")) }
-                            ActBtn(if (chatUnread > 0) "แชท (" + chatUnread + ")" else "แชท", OD_CHAT, Color(0xFF16A34A), Modifier.weight(1f)) { onChat() }
+                    WSec("ข้อมูลลูกค้า") {
+                        WRow("ชื่อ", o.cust("name"), false)
+                        WRow("โทร", o.cust("phone"), false)
+                        WRow("ที่อยู่", o.cust("address"), true)
+                        Spacer(Modifier.height(12.dp))
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            WBtn("โทร", OD_PHONE, Color(0xFFE8F0FE), C.Primary, Modifier.weight(1f), 0) { dial(o.cust("phone")) }
+                            WBtn("นำทาง", W_DIAMOND, Color(0xFFE8F0FE), C.Primary, Modifier.weight(1f), 0) { navTo(o.custNum("lat"), o.custNum("lng")) }
+                            WBtn("แชท", OD_CHAT, Color(0xFFDCFCE7), Color(0xFF16A34A), Modifier.weight(1f), chatUnread) { onChat() }
                         }
                     }
                 }
-                Sec("สรุปคำสั่งซื้อ", OD_LIST) {
-                    Row(Modifier.fillMaxWidth().padding(top = 10.dp, bottom = 4.dp)) {
-                        Text("สินค้า", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = C.Subtext, modifier = Modifier.weight(1f))
-                        Text("จำนวน", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = C.Subtext, textAlign = TextAlign.Center, modifier = Modifier.width(56.dp))
-                        Text("ราคา", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = C.Subtext, textAlign = TextAlign.End, modifier = Modifier.width(76.dp))
+                WSec("สรุปคำสั่งซื้อ") {
+                    Row(Modifier.fillMaxWidth().padding(bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text("สินค้า", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = C.Subtext, modifier = Modifier.weight(1f))
+                        Text("จำนวน", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = C.Subtext, textAlign = TextAlign.Center, modifier = Modifier.width(48.dp))
+                        Text("ราคา", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = C.Subtext, textAlign = TextAlign.End, modifier = Modifier.width(60.dp))
                     }
                     for (i in o.items()) {
                         val qty: Int = (i["qty"] as? Number)?.toInt() ?: 0
                         val price: Double = (i["price"] as? Number)?.toDouble() ?: 0.0
-                        Row(Modifier.fillMaxWidth().padding(vertical = 10.dp)) {
+                        Row(Modifier.fillMaxWidth().padding(vertical = 7.dp)) {
                             Column(Modifier.weight(1f)) {
-                                Text(i["name"]?.toString() ?: "", fontWeight = FontWeight.Bold, fontSize = 15.sp, lineHeight = 22.sp, color = C.Text)
+                                Text(i["name"]?.toString() ?: "", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = C.Text)
                                 val cat: String = i["category"]?.toString() ?: ""
-                                if (cat.isNotEmpty()) Text("หมวด: " + cat, fontSize = 12.sp, lineHeight = 18.sp, color = C.Subtext)
+                                if (cat.isNotEmpty()) Text("หมวด: " + cat, fontSize = 11.sp, color = Color(0xFF94A3B8))
                                 for (op in com.nimit.delivery.data.asList(i["options"])) {
                                     val om: Map<String, Any?> = com.nimit.delivery.data.asMap(op)
                                     val nm: String = if (op is String) op else (om["name"]?.toString() ?: "")
                                     val pr: Double = (om["price"] as? Number)?.toDouble() ?: 0.0
-                                    Text("- " + nm + (if (pr > 0.0) " +" + money(pr) else ""), fontSize = 13.sp, lineHeight = 20.sp, color = C.Subtext)
+                                    Text("- " + nm + (if (pr > 0.0) " +" + money(pr) else ""), fontSize = 11.sp, lineHeight = 19.sp, color = C.Subtext, modifier = Modifier.padding(top = 2.dp))
                                 }
                                 val note: String = i["note"]?.toString() ?: ""
-                                if (note.isNotEmpty()) Text("หมายเหตุ: " + note, fontSize = 13.sp, lineHeight = 20.sp, color = Color(0xFFDC2626), fontWeight = FontWeight.Bold)
+                                if (note.isNotEmpty()) Text("หมายเหตุ: " + note, fontSize = 12.sp, color = Color(0xFFDC2626), fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 2.dp))
                             }
-                            Text("x" + qty, fontSize = 14.sp, color = C.Text, textAlign = TextAlign.Center, modifier = Modifier.width(56.dp))
-                            Text(money(price * qty), fontSize = 15.sp, color = C.Text, fontWeight = FontWeight.Bold, textAlign = TextAlign.End, modifier = Modifier.width(76.dp))
+                            Text("x" + qty, fontSize = 13.sp, color = C.Text, textAlign = TextAlign.Center, modifier = Modifier.width(48.dp))
+                            Text(money(price * qty), fontSize = 13.sp, color = C.Text, textAlign = TextAlign.End, modifier = Modifier.width(60.dp))
                         }
-                        Box(Modifier.fillMaxWidth().height(1.dp).background(Color(0xFFF1F4F9)))
+                        Box(Modifier.fillMaxWidth().height(1.dp).background(Color(0xFFF5F6F8)))
                     }
-                    Row(Modifier.fillMaxWidth().padding(vertical = 14.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("รวม", fontSize = 16.sp, fontWeight = FontWeight.ExtraBold, color = C.Text)
-                        Text(money(o.n("subtotal")), fontSize = 16.sp, fontWeight = FontWeight.ExtraBold, color = C.Text)
+                    Spacer(Modifier.height(6.dp))
+                    Box(Modifier.fillMaxWidth().height(2.dp).background(Color(0xFFF5F6F8)))
+                    Row(Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("รวม", fontSize = 16.sp, fontWeight = FontWeight.ExtraBold, color = C.Primary)
+                        Text(money(o.n("subtotal")), fontSize = 16.sp, fontWeight = FontWeight.ExtraBold, color = C.Primary)
                     }
                 }
-                Sec("สรุปราคา", OD_MONEY) {
-                    PRow("เรียกเก็บลูกค้า", money(o.n("grandTotal")))
-                    PRow("จ่ายร้าน (ต้นทุน)", money(o.n("baseCost")))
-                    PRow("หักจากกระเป๋า", money(o.n("walletCut")))
-                    PRow("ค่าส่ง", money(o.n("deliveryFee")))
+                WSec("สรุปราคา") {
+                    WPrice("เรียกเก็บลูกค้า", money(o.n("grandTotal")))
+                    WPrice("จ่ายร้าน (ต้นทุน)", money(o.n("baseCost")))
+                    WPrice("หักจากกระเป๋า", money(o.n("walletCut")))
+                    WPrice("ค่าส่ง", money(o.n("deliveryFee")))
                     Box(Modifier.fillMaxWidth().height(3.dp).background(Color(0xFFDCFCE7)))
-                    Row(Modifier.fillMaxWidth().padding(top = 14.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text("รายได้รอบนี้", fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFF16A34A), modifier = Modifier.weight(1f))
-                        Text(money(o.n("riderEarn")), fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFF16A34A))
+                    Row(Modifier.fillMaxWidth().padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text("รายได้รอบนี้", fontSize = 17.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFF16A34A), modifier = Modifier.weight(1f))
+                        Text(money(o.n("riderEarn")), fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFF16A34A))
                     }
                 }
             }
             if (!fromHistory) {
                 val isDone: Boolean = o.status == "done"
-                Box(Modifier.fillMaxWidth().background(Color(0xFFEEF3FA)).padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 16.dp)) {
-                    GradientButton(
-                        text = if (isDone) "เสร็จสิ้นแล้ว" else (NEXT_LABEL[o.status] ?: "ถัดไป"),
-                        enabled = !isDone && !busy
-                    ) { confirm = true }
+                val canGo: Boolean = !isDone && !busy
+                Box(Modifier.fillMaxWidth().background(Color(0xFFEEF3FA)).padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 26.dp)) {
+                    Box(
+                        Modifier.fillMaxWidth().height(54.dp)
+                            .shadow(6.dp, RoundedCornerShape(16.dp), ambientColor = Color(0x4D0C4AA6), spotColor = Color(0x4D0C4AA6))
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(if (canGo) Brush.linearGradient(listOf(Color(0xFF0C4AA6), Color(0xFF083570))) else Brush.linearGradient(listOf(Color(0xFFCBD5E1), Color(0xFFCBD5E1))))
+                            .clickable(enabled = canGo) { confirm = true },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(if (isDone) "เสร็จสิ้นแล้ว" else (NEXT_LABEL[o.status] ?: "ถัดไป"), fontSize = 16.sp, fontWeight = FontWeight.ExtraBold, color = Color.White)
+                    }
                 }
             }
         }
@@ -277,4 +289,72 @@ private fun HorizontalLine() {
     Spacer(Modifier.height(6.dp))
     Box(Modifier.fillMaxWidth().height(1.dp).background(Color(0xFFF0F0F0)))
     Spacer(Modifier.height(6.dp))
+}
+
+// ---- rider7: ตัวช่วยหน้ารายละเอียดตาม rider.html ----
+private const val W_DIAMOND = "M21.71 11.29l-9-9a1 1 0 0 0-1.42 0l-9 9a1 1 0 0 0 0 1.42l9 9a1 1 0 0 0 1.42 0l9-9a1 1 0 0 0 0-1.42z"
+
+@Composable
+private fun WTopBar(title: String, onBack: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth()
+            .shadow(3.dp, ambientColor = Color(0x1A0F172A), spotColor = Color(0x1A0F172A))
+            .background(Brush.verticalGradient(listOf(Color(0xFF0C4AA6), Color(0xFF083570))))
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Box(
+            Modifier.size(38.dp).clip(RoundedCornerShape(12.dp)).background(Color.White.copy(alpha = 0.16f)).clickable { onBack() },
+            contentAlignment = Alignment.Center
+        ) { PathIcon(OD_BACK, Color.White, 20.dp) }
+        Text(title, fontSize = 16.sp, fontWeight = FontWeight.ExtraBold, color = Color.White)
+    }
+}
+
+@Composable
+private fun WSec(title: String, content: @Composable ColumnScope.() -> Unit) {
+    Column(
+        Modifier.fillMaxWidth()
+            .shadow(1.dp, RoundedCornerShape(18.dp), ambientColor = Color(0x0D0F172A), spotColor = Color(0x0D0F172A))
+            .clip(RoundedCornerShape(18.dp)).background(Color.White).padding(18.dp)
+    ) {
+        Text(title, fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = C.Primary, letterSpacing = 0.4.sp)
+        Spacer(Modifier.height(10.dp))
+        Box(Modifier.fillMaxWidth().height(2.dp).background(Color(0xFFF5F6F8)))
+        Spacer(Modifier.height(12.dp))
+        content()
+    }
+}
+
+@Composable
+private fun WRow(label: String, value: String, last: Boolean) {
+    Row(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
+        Text(label, fontSize = 14.sp, color = C.Subtext, maxLines = 1, modifier = Modifier.alignByBaseline())
+        Text(":", fontSize = 14.sp, color = C.Subtext, modifier = Modifier.padding(horizontal = 6.dp).alignByBaseline())
+        Text(if (value.isEmpty()) "-" else value, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = C.Text, modifier = Modifier.weight(1f).alignByBaseline())
+    }
+    if (!last) Box(Modifier.fillMaxWidth().height(1.dp).background(Color(0xFFF5F6F8)))
+}
+
+@Composable
+private fun WPrice(label: String, value: String) {
+    Row(Modifier.fillMaxWidth().padding(vertical = 11.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(label, fontSize = 14.sp, color = C.Subtext, modifier = Modifier.weight(1f))
+        Text(value, fontSize = 14.sp, color = C.Text)
+    }
+    Box(Modifier.fillMaxWidth().height(1.dp).background(Color(0xFFF5F6F8)))
+}
+
+@Composable
+private fun WBtn(label: String, icon: String, bg: Color, fg: Color, modifier: Modifier, badge: Int, onClick: () -> Unit) {
+    Box(modifier.height(42.dp).clip(RoundedCornerShape(12.dp)).background(bg).clickable { onClick() }, contentAlignment = Alignment.Center) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            PathIcon(icon, fg, 14.dp)
+            Text(label, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = fg)
+        }
+        if (badge > 0) {
+            Text(badge.toString(), fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Color.White, textAlign = TextAlign.Center,
+                modifier = Modifier.align(Alignment.TopEnd).padding(top = 4.dp, end = 4.dp).size(16.dp).clip(androidx.compose.foundation.shape.CircleShape).background(Color(0xFFEF4444)).wrapContentSize(Alignment.Center))
+        }
+    }
 }

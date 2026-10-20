@@ -50,7 +50,13 @@ fun RiderNav() {
 
     UpdatePrompt(appName = "Nimit Rider", tagPrefix = "rider-build-")
 
-    NavHost(nav, startDestination = start) {
+    NavHost(
+        nav, startDestination = start,
+        enterTransition = { androidx.compose.animation.slideInHorizontally(androidx.compose.animation.core.tween(260, easing = androidx.compose.animation.core.FastOutSlowInEasing)) { it } },
+        exitTransition = { androidx.compose.animation.slideOutHorizontally(androidx.compose.animation.core.tween(260, easing = androidx.compose.animation.core.FastOutSlowInEasing)) { -it / 4 } },
+        popEnterTransition = { androidx.compose.animation.slideInHorizontally(androidx.compose.animation.core.tween(260, easing = androidx.compose.animation.core.FastOutSlowInEasing)) { -it / 4 } },
+        popExitTransition = { androidx.compose.animation.slideOutHorizontally(androidx.compose.animation.core.tween(260, easing = androidx.compose.animation.core.FastOutSlowInEasing)) { it } }
+    ) {
         composable("login") {
             RiderLoginScreen(onLoggedIn = { r: RiderInfo ->
                 session.riderId = r.id
