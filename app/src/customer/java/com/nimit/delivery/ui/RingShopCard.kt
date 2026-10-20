@@ -4,6 +4,8 @@ import android.widget.Toast
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.keyframes
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
@@ -11,6 +13,8 @@ import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.gestures.rememberDraggableState
@@ -27,7 +31,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Paint
+import androidx.compose.ui.graphics.asFrameworkPaint
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
@@ -66,6 +78,45 @@ private const val RING_RAD = 240f
 private const val RING_PX = 64f
 private val RING_PAL = listOf(0xFFB45309, 0xFFCA8A04, 0xFFC2410C, 0xFF15803D, 0xFFB91C1C, 0xFFDC2626, 0xFFEA580C, 0xFF9F1239, 0xFF0EA5E9, 0xFF7C2D12, 0xFFA16207, 0xFFBE185D)
 private val RING_SUB = Color(0xFF64748B)
+
+/** เงา 3 ชั้นของการ์ดต้นแบบ: วงแหวนฟ้าจาง 3px + แสงเรืองฟ้า 14px + เงาตกพื้นนุ่ม (0 6px 20px) */
+private fun Modifier.cardGlow(radius: androidx.compose.ui.unit.Dp): Modifier = this.drawBehind {
+    val r = radius.toPx(); val sp = 3.dp.toPx()
+    drawRoundRect(Color(0x1F2E6FE0), Offset(-sp, -sp), Size(size.width + 2 * sp, size.height + 2 * sp), CornerRadius(r + sp))
+    drawIntoCanvas { c ->
+        val paint = Paint()
+        val fp = paint.asFrameworkPaint()
+        fp.color = android.graphics.Color.WHITE
+        fp.setShadowLayer(12.dp.toPx(), 0f, 0f, Color(0x592E6FE0).toArgb())
+        c.drawRoundRect(0f, 0f, size.width, size.height, r, r, paint)
+        fp.setShadowLayer(18.dp.toPx(), 0f, 6.dp.toPx(), Color(0x1F0B2C63).toArgb())
+        c.drawRoundRect(0f, 0f, size.width, size.height, r, r, paint)
+    }
+}
+
+/** ปุ่ม "ปิดเมนู": โผล่แบบ fade + เด้งขยาย (0.4→1, หน่วง .12s, เส้นโค้ง cubic-bezier(.34,1.3,.5,1)) กดแล้วหด .95 ตามต้นแบบ */
+@Composable
+private fun CloseMenuButton(onClick: () -> Unit) {
+    val a = remember { Animatable(0f) }
+    val sc = remember { Animatable(0.4f) }
+    LaunchedEffect(Unit) {
+        delay(120)
+        launch { a.animateTo(1f, tween(500, easing = CubicBezierEasing(0.25f, 0.1f, 0.25f, 1f))) }
+        sc.animateTo(1f, tween(600, easing = CubicBezierEasing(0.34f, 1.3f, 0.5f, 1f)))
+    }
+    val src = remember { MutableInteractionSource() }
+    val pressed by src.collectIsPressedAsState()
+    val press by animateFloatAsState(if (pressed) 0.95f else 1f, tween(120), label = "press")
+    val shape = RoundedCornerShape(12.dp)
+    Row(
+        Modifier.padding(start = 8.dp)
+            .graphicsLayer { alpha = a.value; scaleX = sc.value * press; scaleY = sc.value * press }
+            .shadow(6.dp, shape, ambientColor = N.B500.copy(alpha = 0.4f), spotColor = N.B500.copy(alpha = 0.4f))
+            .clip(shape).background(Brush.linearGradient(listOf(N.B500, N.B700)))
+            .clickable(interactionSource = src, indication = null) { onClick() }.padding(horizontal = 14.dp, vertical = 7.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) { Text("✕ ปิดเมนู", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color.White) }
+}
 
 private object RingPricingCache { var base: Pricing? = null }
 
@@ -146,7 +197,7 @@ fun RingShopCard(
     val badge = s.badge()
     Column(
         Modifier.fillMaxWidth().alpha(if (open) 1f else 0.6f)
-            .shadow(8.dp, shape, ambientColor = N.B500.copy(alpha = 0.35f), spotColor = N.B500.copy(alpha = 0.35f))
+            .cardGlow(20.dp)
             .clip(shape).background(Color.White).border(2.dp, N.B500, shape)
             .animateContentSize(tween(350))
             .clickable(enabled = !expanded) { if (open) onToggle() else Toast.makeText(ctx, "ร้านปิดอยู่ตอนนี้", Toast.LENGTH_SHORT).show() }
@@ -181,11 +232,7 @@ fun RingShopCard(
                 }
             }
             if (expanded) {
-                Row(
-                    Modifier.padding(start = 8.dp).clip(RoundedCornerShape(12.dp)).background(Brush.linearGradient(listOf(N.B500, N.B700)))
-                        .clickable { onToggle() }.padding(horizontal = 14.dp, vertical = 7.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) { Text("✕ ปิดเมนู", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color.White) }
+                CloseMenuButton(onToggle)
             } else {
                 Box(Modifier.padding(start = 6.dp).size(30.dp).clip(CircleShape).background(N.B50).clickable { onFav() }, contentAlignment = Alignment.Center) {
                     PathIcon(P.HEART, if (fav) N.Red500 else Color(0xFFB6C2D6), 15.dp)
