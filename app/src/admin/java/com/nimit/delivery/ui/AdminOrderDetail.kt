@@ -44,7 +44,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -664,19 +667,19 @@ private fun DSectionEdit(title: String, editLabel: String, onEdit: () -> Unit, c
     }
 }
 
-// แถวข้อมูล: colon = true แสดง "ชื่อ : ข้อมูล" ชิดซ้าย  (colon = false ตามหน้ารายละเอียดเดิมของเว็บ)
+// แถวข้อมูลแบบ "ชื่อ : ข้อมูล" ต่อกันชิดซ้าย (ไม่เว้นคอลัมน์ให้ตรงกัน)
 @Composable
 private fun DRows(rows: List<DR>, colon: Boolean) {
     for (i in rows.indices) {
         val r = rows[i]
-        Row(Modifier.fillMaxWidth().padding(vertical = 7.dp)) {
-            Text(r.label, fontSize = 13.sp, color = r.labelColor, modifier = Modifier.width(if (colon) 84.dp else 90.dp))
-            if (colon) Text(":", fontSize = 13.sp, color = r.labelColor, modifier = Modifier.width(14.dp))
-            Text(
-                r.value, fontSize = if (r.small) 11.sp else 13.sp, fontWeight = FontWeight.Bold, color = r.color,
-                textAlign = TextAlign.Start, modifier = Modifier.weight(1f)
-            )
+        val txt = buildAnnotatedString {
+            withStyle(SpanStyle(color = r.labelColor, fontWeight = FontWeight.Normal)) { append(r.label + "  :  ") }
+            withStyle(SpanStyle(color = r.color, fontWeight = FontWeight.Bold)) { append(r.value) }
         }
+        Text(
+            txt, fontSize = if (r.small) 11.sp else 13.sp, textAlign = TextAlign.Start,
+            modifier = Modifier.fillMaxWidth().padding(vertical = 7.dp)
+        )
         if (i < rows.size - 1) HorizontalDivider(color = DRowLine)
     }
 }
