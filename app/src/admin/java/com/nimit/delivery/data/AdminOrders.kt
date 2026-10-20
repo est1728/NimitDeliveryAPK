@@ -77,6 +77,19 @@ class AdminOrdersStore(private val session: AdminSession) {
                         }
                     })
                 }
+                // ร้านแบบฟิลด์เก่า: shops.franchiseId (เขตเดียว) ยังไม่ถูกย้ายไปเป็น franchiseIds
+                var idx2 = 0
+                for (chunk in ids.chunked(10)) {
+                    val j = 1000 + idx2
+                    idx2++
+                    regs.add(db.collection("shops").whereIn("franchiseId", chunk).addSnapshotListener { snap, e ->
+                        if (e != null) error.value = e.message
+                        if (snap != null) {
+                            chunkShops[j] = snap.documents.map { it.id }.toSet()
+                            shopIds.value = chunkShops.values.flatten().toSet()
+                        }
+                    })
+                }
                 regs.add(db.collection("orders").whereIn("status", ADMIN_ACTIVE).addSnapshotListener { snap, e ->
                     if (e != null) error.value = e.message
                     if (snap != null) {
