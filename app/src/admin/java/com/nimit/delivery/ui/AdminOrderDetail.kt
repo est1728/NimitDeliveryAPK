@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
@@ -33,6 +34,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -43,6 +45,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -50,6 +53,7 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.nimit.delivery.data.ADMIN_STATUS_TH
 import com.nimit.delivery.data.AdminOrd
 import com.nimit.delivery.data.AdminOrderApi
+import com.nimit.delivery.data.AdminOrderEdit
 import com.nimit.delivery.data.AdminRider
 import com.nimit.delivery.data.adminErrorText
 import java.text.SimpleDateFormat
@@ -58,9 +62,11 @@ import java.util.Locale
 import kotlinx.coroutines.launch
 
 private val DGreen = Color(0xFF16A34A)
+private val DGreenL = Color(0xFFDCFCE7)
 private val DRed = Color(0xFFDC2626)
 private val DRedL = Color(0xFFFEE2E2)
 private val DLine = Color(0xFFF0F2F5)
+private val DRowLine = Color(0xFFF5F6F8)
 
 private val DNext: Map<String, String> = mapOf(
     "pending" to "accepted", "accepted" to "picking", "picking" to "arrived", "arrived" to "delivering", "delivering" to "done"
@@ -72,11 +78,13 @@ private val DNextLabel: Map<String, String> = mapOf(
     "pending" to "รับงาน", "accepted" to "เริ่มงาน", "picking" to "ถึงร้านแล้ว", "arrived" to "ขับไปหาลูกค้า", "delivering" to "ส่งสำเร็จ"
 )
 
+private class DR(val label: String, val value: String, val color: Color = C.Text, val labelColor: Color = C.Subtext, val small: Boolean = false)
+
 private fun dPill(st: String): Pair<Color, Color> = when (st) {
     "pending" -> Pair(Color(0xFFFFF7ED), Color(0xFFEA580C))
     "accepted", "picking" -> Pair(C.PrimaryLight, C.Primary)
     "arrived" -> Pair(Color(0xFFFEF3C7), Color(0xFFD97706))
-    "delivering" -> Pair(Color(0xFFDCFCE7), DGreen)
+    "delivering" -> Pair(DGreenL, DGreen)
     "rejected" -> Pair(DRedL, DRed)
     else -> Pair(Color(0xFFF1F5F9), C.Subtext)
 }
@@ -126,9 +134,11 @@ fun AdminOrderDetailScreen(orderId: String, onBack: () -> Unit, onChat: () -> Un
     var riderReadAt by remember { mutableStateOf<Date?>(null) }
     var stats by remember { mutableStateOf<Pair<Int, Int>?>(null) }
     var confirm by remember { mutableStateOf("") }
+    var editKind by remember { mutableStateOf("") }
     var showAssign by remember { mutableStateOf(false) }
     var showCancel by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
+    var proxyText by remember { mutableStateOf("") }
 
     DisposableEffect(orderId) {
         val db = FirebaseFirestore.getInstance()
@@ -145,6 +155,12 @@ fun AdminOrderDetailScreen(orderId: String, onBack: () -> Unit, onChat: () -> Un
             r1.remove()
             r2.remove()
         }
+    }
+
+    val loadedId: String? = order?.id
+    LaunchedEffect(loadedId) {
+        val oo = order
+        if (oo != null) proxyText = Math.round(oo.n("grandTotal")).toString()
     }
 
     val o: AdminOrd? = order
@@ -164,57 +180,64 @@ fun AdminOrderDetailScreen(orderId: String, onBack: () -> Unit, onChat: () -> Un
     val st: String = o.status
     val finished: Boolean = st == "done" || st == "rejected"
     val pill = dPill(st)
+    val isProxy: Boolean = o.s("shopType") == "proxy"
+    val cm = o.d["customer"] as? Map<*, *>
 
     Column(Modifier.fillMaxSize().background(C.Gray)) {
-        // แถบบน
+        // แถบบน (.dtb)
         Row(
-            Modifier.fillMaxWidth().background(Color.White).padding(horizontal = 14.dp, vertical = 10.dp),
+            Modifier.fillMaxWidth().background(Color.White).padding(horizontal = 16.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
                 Modifier.size(38.dp).clip(RoundedCornerShape(12.dp)).background(C.Gray).clickable { onBack() },
                 contentAlignment = Alignment.Center
             ) { Icon(ArrowBackIcon, null, tint = Color.Unspecified, modifier = Modifier.size(18.dp)) }
-            Spacer(Modifier.width(10.dp))
-            Text("#" + o.orderId, fontSize = 17.sp, fontWeight = FontWeight.Black, color = C.Primary, modifier = Modifier.weight(1f))
+            Spacer(Modifier.width(12.dp))
+            Text("#" + o.orderId, fontSize = 22.sp, fontWeight = FontWeight.Black, color = C.Primary, letterSpacing = 2.sp, modifier = Modifier.weight(1f))
             Box(Modifier.clip(RoundedCornerShape(20.dp)).background(pill.first).padding(horizontal = 10.dp, vertical = 3.dp)) {
                 Text(ADMIN_STATUS_TH[st] ?: st, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = pill.second)
             }
-            if (!finished) {
-                Spacer(Modifier.width(8.dp))
-                Box(
-                    Modifier.clip(RoundedCornerShape(20.dp)).background(DRedL).clickable { showCancel = true }
-                        .padding(horizontal = 12.dp, vertical = 7.dp)
-                ) { Text("ยกเลิก", fontSize = 12.sp, fontWeight = FontWeight.ExtraBold, color = DRed) }
-            }
+            Spacer(Modifier.width(12.dp))
+            Box(
+                Modifier.height(32.dp).clip(RoundedCornerShape(20.dp)).background(DRedL).clickable { showCancel = true }.padding(horizontal = 12.dp),
+                contentAlignment = Alignment.Center
+            ) { Text("ยกเลิก", fontSize = 12.sp, fontWeight = FontWeight.ExtraBold, color = DRed) }
         }
-        HorizontalDivider(color = DLine)
 
         Column(
-            Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(12.dp),
+            Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 10.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            DSection("รายละเอียดออเดอร์") {
-                DRow("รหัส", o.orderId)
-                DRow("จำนวน", o.qty().toString() + " รายการ")
-                DRow("จากร้าน", o.s("shopName").ifEmpty { "-" })
-                DRow("การจ่ายเงิน", if (o.s("paymentMethod").isEmpty() || o.s("paymentMethod") == "cash") "เงินสด" else o.s("paymentMethod"))
-                DRow("เวลา", o.created?.let { SimpleDateFormat("d MMM HH:mm", Locale("th", "TH")).format(it) } ?: "-")
-                DRow("สถานะ", ADMIN_STATUS_TH[st] ?: st)
+            // รายละเอียดออเดอร์
+            DSection("รายละเอียดออเดอร์", null) {
+                val rows = ArrayList<DR>()
+                rows.add(DR("รหัส", o.orderId))
+                rows.add(DR("UUID", o.id, C.Subtext, C.Subtext, true))
+                rows.add(DR("จำนวน", o.qty().toString() + " รายการ"))
+                rows.add(DR("จากร้าน", o.s("shopName").ifEmpty { "-" }))
+                val pm = o.s("paymentMethod")
+                rows.add(DR("การจ่ายเงิน", if (pm.isEmpty() || pm == "cash") "เงินสด" else pm))
+                rows.add(DR("เวลา", o.created?.let { SimpleDateFormat("d MMM HH:mm", Locale("th", "TH")).format(it) } ?: "-"))
+                rows.add(DR("สถานะ", ADMIN_STATUS_TH[st] ?: st))
                 if (st == "rejected") {
                     val faultTxt = if (o.s("cancelFault") == "shop") "ไม่หักเครดิตลูกค้า" else "หักเครดิตลูกค้า"
-                    DRow("เหตุยกเลิก", o.s("cancelNote").ifEmpty { "-" } + " (" + faultTxt + ")", if (o.s("cancelFault") == "shop") DGreen else DRed)
+                    rows.add(DR("เหตุยกเลิก", o.s("cancelNote").ifEmpty { "-" } + " (" + faultTxt + ")", if (o.s("cancelFault") == "shop") DGreen else DRed))
                 }
-                DRow("ไรเดอร์", o.s("riderName").ifEmpty { "ยังไม่มี" })
+                rows.add(DR("ไรเดอร์", o.s("riderName").ifEmpty { "ยังไม่มี" }))
                 val rr = riderReadAt
-                DRow("อ่านออเดอร์", if (rr != null) "อ่านแล้ว เวลา " + SimpleDateFormat("HH:mm", Locale("th", "TH")).format(rr) else "ยังไม่อ่าน", if (rr != null) DGreen else C.Subtext)
+                rows.add(DR("อ่านออเดอร์", if (rr != null) "อ่านแล้ว เวลา " + SimpleDateFormat("HH:mm", Locale("th", "TH")).format(rr) else "ยังไม่อ่าน", if (rr != null) DGreen else C.Subtext))
+                DRows(rows, true)
             }
 
-            DSection("ข้อมูลร้านค้า") {
-                DRow("ชื่อ", o.s("shopName").ifEmpty { "-" })
-                DRow("โทร", o.s("shopPhone").ifEmpty { "-" })
-                DRow("ที่อยู่", o.s("shopAddress").ifEmpty { "-" }, C.Subtext)
-                Row(Modifier.fillMaxWidth().padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            // ข้อมูลร้านค้า (ชื่อ : ข้อมูล ชิดซ้าย)
+            DSectionEdit("ข้อมูลร้านค้า", "แก้ไข", { editKind = "shop" }) {
+                val rows = ArrayList<DR>()
+                rows.add(DR("ชื่อ", o.s("shopName").ifEmpty { "-" }))
+                rows.add(DR("โทร", o.s("shopPhone").ifEmpty { "-" }))
+                rows.add(DR("ที่อยู่", o.s("shopAddress").ifEmpty { "-" }, C.Subtext))
+                DRows(rows, true)
+                Row(Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     DAct("โทรหาร้าน", Modifier.weight(1f), false) { dDial(ctx, o.s("shopPhone")) }
                     DAct("นำทาง", Modifier.weight(1f), false) {
                         val lat = (o.d["shopLat"] as? Number)?.toDouble()
@@ -224,54 +247,107 @@ fun AdminOrderDetailScreen(orderId: String, onBack: () -> Unit, onChat: () -> Un
                 }
             }
 
-            DSection("ข้อมูลลูกค้า") {
-                val cm = o.d["customer"] as? Map<*, *>
-                DRow("ชื่อ", o.cust("name").ifEmpty { "-" })
-                DRow("โทร", o.cust("phone").ifEmpty { "-" })
-                DRow("ที่จัดส่ง", o.cust("address").ifEmpty { "-" })
-                DRow("สั่งสำเร็จ", stats?.let { it.first.toString() + " ครั้ง" } ?: "...", DGreen)
-                DRow("ยกเลิก", stats?.let { it.second.toString() + " ครั้ง" } ?: "...", DRed)
-                Row(Modifier.fillMaxWidth().padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            // ข้อมูลลูกค้า (ชื่อ : ข้อมูล ชิดซ้าย)
+            DSectionEdit("ข้อมูลลูกค้า", "แก้ไข", { editKind = "cus" }) {
+                val rows = ArrayList<DR>()
+                rows.add(DR("ชื่อ", o.cust("name").ifEmpty { "-" }))
+                rows.add(DR("โทร", o.cust("phone").ifEmpty { "-" }))
+                rows.add(DR("ที่จัดส่ง", o.cust("address").ifEmpty { "-" }))
+                rows.add(DR("สั่งสำเร็จ", stats?.let { it.first.toString() + " ครั้ง" } ?: "...", DGreen, DGreen))
+                rows.add(DR("ยกเลิก", stats?.let { it.second.toString() + " ครั้ง" } ?: "...", DRed, DRed))
+                DRows(rows, true)
+                Row(Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     DAct("โทร", Modifier.weight(1f), false) { dDial(ctx, o.cust("phone")) }
                     DAct(if (chatUnread > 0) "แชท (" + chatUnread + ")" else "แชท", Modifier.weight(1f), true) { onChat() }
                     DAct("นำทาง", Modifier.weight(1f), false) { dMap(ctx, dNum(cm, "lat"), dNum(cm, "lng"), o.cust("address")) }
                 }
             }
 
-            DSection("สรุปคำสั่งซื้อ") {
-                Row(Modifier.fillMaxWidth().padding(bottom = 6.dp)) {
+            // สรุปคำสั่งซื้อ
+            DSectionEdit("สรุปคำสั่งซื้อ", "แก้ไขออเดอร์", { editKind = "order" }) {
+                Row(Modifier.fillMaxWidth().padding(bottom = 5.dp)) {
                     Text("สินค้า", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = C.Subtext, modifier = Modifier.weight(1f))
-                    Text("จำนวน", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = C.Subtext, modifier = Modifier.width(44.dp), textAlign = TextAlign.Center)
-                    Text("ราคา", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = C.Subtext, modifier = Modifier.width(54.dp), textAlign = TextAlign.End)
-                    Text("รวม", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = C.Subtext, modifier = Modifier.width(58.dp), textAlign = TextAlign.End)
+                    Text("จำนวน", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = C.Subtext, modifier = Modifier.width(48.dp))
+                    Text("ราคา/หน่วย", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = C.Subtext, modifier = Modifier.width(76.dp))
+                    Text("รวม", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = C.Subtext, textAlign = TextAlign.End, modifier = Modifier.width(60.dp))
                 }
-                for (it in dItems(o)) {
+                HorizontalDivider(thickness = 2.dp, color = C.Gray)
+                val items = dItems(o)
+                for (idx in items.indices) {
+                    val it = items[idx]
                     val qty = (it["qty"] as? Number)?.toInt() ?: 0
                     val unit = dNum(it, "price") ?: dNum(it, "basePrice") ?: 0.0
-                    HorizontalDivider(color = Color(0xFFF5F6F8))
                     Row(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
-                        Column(Modifier.weight(1f)) {
-                            Text(it["name"]?.toString() ?: "-", fontSize = 13.sp, color = C.Text)
+                        Column(Modifier.weight(1f).padding(end = 6.dp)) {
+                            Text(it["name"]?.toString() ?: "-", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = C.Text)
                             val cat = it["category"]?.toString() ?: ""
-                            if (cat.isNotEmpty()) Text("หมวด: " + cat, fontSize = 11.sp, color = Color(0xFF94A3B8))
+                            if (cat.isNotEmpty()) Text("หมวด: " + cat, fontSize = 11.sp, color = Color(0xFF94A3B8), modifier = Modifier.padding(top = 1.dp))
                             for (op in dOpts(it)) Text("- " + op, fontSize = 12.sp, color = C.Subtext)
                             val note = it["note"]?.toString() ?: ""
-                            if (note.isNotEmpty()) Text("หมายเหตุ: " + note, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = DRed)
+                            if (note.isNotEmpty()) Text("หมายเหตุ: " + note, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = DRed, modifier = Modifier.padding(top = 3.dp))
                         }
-                        Text(qty.toString(), fontSize = 13.sp, color = C.Text, modifier = Modifier.width(44.dp), textAlign = TextAlign.Center)
-                        Text(dMoney(unit), fontSize = 13.sp, color = C.Text, modifier = Modifier.width(54.dp), textAlign = TextAlign.End)
-                        Text(dMoney(unit * qty), fontSize = 13.sp, color = C.Text, modifier = Modifier.width(58.dp), textAlign = TextAlign.End)
+                        Text(qty.toString(), fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = C.Text, modifier = Modifier.width(48.dp))
+                        Text(dMoney(unit), fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = C.Text, modifier = Modifier.width(76.dp))
+                        Text(dMoney(unit * qty), fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = C.Text, textAlign = TextAlign.End, modifier = Modifier.width(60.dp))
                     }
+                    if (idx < items.size - 1) HorizontalDivider(color = DRowLine)
                 }
             }
 
-            DSection("สรุปราคา") {
-                DRow("เรียกเก็บลูกค้า", dMoney(o.n("grandTotal")))
-                DRow("จ่ายร้าน (ต้นทุน)", dMoney(o.n("baseCost")))
-                DRow("หักจากกระเป๋า", dMoney(o.n("walletCut")))
-                DRow("ค่าส่ง", dMoney(o.n("deliveryFee")))
-                DRow("รายได้รอบนี้", dMoney(o.n("riderEarn")), C.Primary)
+            // สรุปราคา
+            DSection("สรุปราคา", null) {
+                DPriceRow("เรียกเก็บลูกค้า", dMoney(o.n("grandTotal")), false)
+                DPriceRow("จ่ายร้าน (ต้นทุน)", dMoney(o.n("baseCost")), false)
+                DPriceRow("หักจากกระเป๋า", dMoney(o.n("walletCut")), false)
+                DPriceRow("ค่าส่ง", dMoney(o.n("deliveryFee")), false)
+                HorizontalDivider(thickness = 2.dp, color = DGreenL, modifier = Modifier.padding(top = 4.dp))
+                DPriceRow("รายได้รอบนี้", dMoney(o.n("riderEarn")), true)
             }
+
+            // แก้ไขราคา (เฉพาะร้านฝากซื้อและยังไม่จบงาน)
+            if (isProxy && !finished) {
+                DSection("แก้ไขราคา (ร้านฝากซื้อ)", null) {
+                    Text(
+                        "ร้านฝากซื้อ: ราคาที่ตั้งใหม่ = ยอดเรียกเก็บลูกค้าทั้งหมด ไม่มีค่าส่งแยก",
+                        fontSize = 12.sp, color = C.Subtext, modifier = Modifier.padding(bottom = 10.dp)
+                    )
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        OutlinedTextField(
+                            value = proxyText, onValueChange = { proxyText = it.filter { c -> c.isDigit() } },
+                            singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            modifier = Modifier.weight(1f)
+                        )
+                        Box(
+                            Modifier.height(48.dp).clip(RoundedCornerShape(12.dp)).background(if (busy) Color(0xFFC5CFE8) else C.Primary)
+                                .clickable(enabled = !busy) {
+                                    val v = proxyText.toLongOrNull()
+                                    if (v == null || v <= 0L) {
+                                        dToast(ctx, "กรุณาใส่ราคาที่ถูกต้อง")
+                                    } else {
+                                        busy = true
+                                        scope.launch {
+                                            try {
+                                                AdminOrderEdit.proxyPrice(orderId, v)
+                                                dToast(ctx, "บันทึกราคาใหม่แล้ว ฿" + v)
+                                            } catch (e: Exception) {
+                                                dToast(ctx, adminErrorText(e))
+                                            }
+                                            busy = false
+                                        }
+                                    }
+                                }.padding(horizontal = 16.dp),
+                            contentAlignment = Alignment.Center
+                        ) { Text("บันทึกราคาใหม่", fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, color = Color.White) }
+                    }
+                    val pe = o.date("priceEditedAt")
+                    Text(
+                        "ราคาปัจจุบัน ฿" + Math.round(o.n("grandTotal")) + " · แก้ไขล่าสุด: " +
+                            (if (pe != null) SimpleDateFormat("d MMM HH:mm", Locale("th", "TH")).format(pe) else "ยังไม่เคยแก้ไข"),
+                        fontSize = 11.sp, color = C.Subtext, modifier = Modifier.padding(top = 8.dp)
+                    )
+                }
+            }
+            Spacer(Modifier.height(8.dp))
         }
 
         // แถบปุ่มล่าง
@@ -283,10 +359,10 @@ fun AdminOrderDetailScreen(orderId: String, onBack: () -> Unit, onChat: () -> Un
         ) {
             if (DPrev.containsKey(st)) {
                 Box(
-                    Modifier.height(48.dp).clip(RoundedCornerShape(14.dp)).background(C.Gray)
-                        .clickable(enabled = !busy) { confirm = "prev" }.padding(horizontal = 16.dp),
+                    Modifier.size(48.dp).clip(RoundedCornerShape(14.dp)).background(C.Gray)
+                        .clickable(enabled = !busy) { confirm = "prev" },
                     contentAlignment = Alignment.Center
-                ) { Text("ย้อน", fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, color = C.Subtext) }
+                ) { Icon(ArrowBackIcon, null, tint = Color.Unspecified, modifier = Modifier.size(20.dp)) }
             }
             val nextOn = !finished && !busy
             Box(
@@ -297,10 +373,10 @@ fun AdminOrderDetailScreen(orderId: String, onBack: () -> Unit, onChat: () -> Un
             ) { Text(if (finished) "เสร็จสิ้น" else (DNextLabel[st] ?: "-"), fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, color = Color.White) }
             if (!finished) {
                 Box(
-                    Modifier.height(48.dp).clip(RoundedCornerShape(14.dp)).background(C.PrimaryLight)
-                        .clickable(enabled = !busy) { showAssign = true }.padding(horizontal = 16.dp),
+                    Modifier.height(48.dp).clip(RoundedCornerShape(14.dp)).background(DGreenL)
+                        .clickable(enabled = !busy) { showAssign = true }.padding(horizontal = 18.dp),
                     contentAlignment = Alignment.Center
-                ) { Text("โยนงาน", fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, color = C.Primary) }
+                ) { Text("โยนงาน", fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, color = DGreen) }
             }
         }
     }
@@ -366,6 +442,56 @@ fun AdminOrderDetailScreen(orderId: String, onBack: () -> Unit, onChat: () -> Un
         )
     }
 
+    // หน้าต่างแก้ไข: ร้าน / ลูกค้า / ออเดอร์
+    if (editKind == "shop") {
+        DEditDialog(
+            "แก้ไขข้อมูลร้านค้า", listOf("ชื่อร้าน", "เบอร์โทร", "ที่อยู่"),
+            listOf(o.s("shopName"), o.s("shopPhone"), o.s("shopAddress")), listOf(KeyboardType.Text, KeyboardType.Phone, KeyboardType.Text),
+            onDismiss = { editKind = "" },
+            onSave = { v ->
+                editKind = ""
+                scope.launch {
+                    try {
+                        AdminOrderEdit.shopInfo(orderId, v[0].trim(), v[1].trim(), v[2].trim())
+                        dToast(ctx, "บันทึกสำเร็จ")
+                    } catch (e: Exception) { dToast(ctx, "บันทึกไม่สำเร็จ") }
+                }
+            }
+        )
+    }
+    if (editKind == "cus") {
+        DEditDialog(
+            "แก้ไขข้อมูลลูกค้า", listOf("ชื่อ", "เบอร์โทร", "ที่อยู่จัดส่ง"),
+            listOf(o.cust("name"), o.cust("phone"), o.cust("address")), listOf(KeyboardType.Text, KeyboardType.Phone, KeyboardType.Text),
+            onDismiss = { editKind = "" },
+            onSave = { v ->
+                editKind = ""
+                scope.launch {
+                    try {
+                        AdminOrderEdit.customer(orderId, v[0].trim(), v[1].trim(), v[2].trim())
+                        dToast(ctx, "บันทึกข้อมูลลูกค้าสำเร็จ")
+                    } catch (e: Exception) { dToast(ctx, "บันทึกไม่สำเร็จ") }
+                }
+            }
+        )
+    }
+    if (editKind == "order") {
+        DEditDialog(
+            "แก้ไขออเดอร์", listOf("ค่าส่ง", "หมายเหตุแอดมิน"),
+            listOf(Math.round(o.n("deliveryFee")).toString(), o.s("adminNote")), listOf(KeyboardType.Number, KeyboardType.Text),
+            onDismiss = { editKind = "" },
+            onSave = { v ->
+                editKind = ""
+                scope.launch {
+                    try {
+                        AdminOrderEdit.orderExtra(orderId, v[0].trim().toDoubleOrNull() ?: 0.0, v[1].trim())
+                        dToast(ctx, "บันทึกสำเร็จ")
+                    } catch (e: Exception) { dToast(ctx, "บันทึกไม่สำเร็จ") }
+                }
+            }
+        )
+    }
+
     if (showCancel) {
         var fault by remember { mutableStateOf("customer") }
         var note by remember { mutableStateOf("") }
@@ -411,6 +537,36 @@ fun AdminOrderDetailScreen(orderId: String, onBack: () -> Unit, onChat: () -> Un
             dismissButton = { TextButton(onClick = { showCancel = false }) { Text("ปิด") } }
         )
     }
+}
+
+@Composable
+private fun DEditDialog(
+    title: String,
+    labels: List<String>,
+    initial: List<String>,
+    types: List<KeyboardType>,
+    onDismiss: () -> Unit,
+    onSave: (List<String>) -> Unit
+) {
+    val values = remember { mutableStateListOf<String>().apply { addAll(initial) } }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            Column(Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                for (i in labels.indices) {
+                    OutlinedTextField(
+                        value = values[i], onValueChange = { values[i] = it },
+                        label = { Text(labels[i]) },
+                        keyboardOptions = KeyboardOptions(keyboardType = types[i]),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = { onSave(values.toList()) }) { Text("บันทึก") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("ปิด") } }
+    )
 }
 
 @Composable
@@ -476,27 +632,69 @@ private fun DChip(text: String, on: Boolean, modifier: Modifier, onClick: () -> 
     ) { Text(text, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = if (on) Color.White else C.Subtext) }
 }
 
+// หัวส่วน (.dsh) มีเส้นล่างหนา และปุ่มแก้ไข (.deb) ถ้ามี
 @Composable
-private fun DSection(title: String, content: @Composable () -> Unit) {
-    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Color.White).padding(14.dp)) {
-        Text(title, fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, color = C.Text, modifier = Modifier.padding(bottom = 8.dp))
+private fun DSectionHead(title: String, editLabel: String?, onEdit: () -> Unit) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Text(title, fontSize = 12.sp, fontWeight = FontWeight.ExtraBold, color = C.Primary, modifier = Modifier.weight(1f))
+        if (editLabel != null) {
+            Box(Modifier.clip(RoundedCornerShape(8.dp)).background(C.PrimaryLight).clickable { onEdit() }.padding(horizontal = 10.dp, vertical = 4.dp)) {
+                Text(editLabel, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = C.Primary)
+            }
+        }
+    }
+    Spacer(Modifier.height(10.dp))
+    HorizontalDivider(thickness = 2.dp, color = C.Gray)
+    Spacer(Modifier.height(4.dp))
+}
+
+@Composable
+private fun DSection(title: String, editLabel: String?, content: @Composable () -> Unit) {
+    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Color.White).padding(16.dp)) {
+        DSectionHead(title, editLabel) { }
         content()
     }
 }
 
 @Composable
-private fun DRow(label: String, value: String, color: Color = C.Text) {
-    Row(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
-        Text(label, fontSize = 13.sp, color = C.Subtext, modifier = Modifier.width(96.dp))
-        Text(value, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = color, textAlign = TextAlign.End, modifier = Modifier.weight(1f))
+private fun DSectionEdit(title: String, editLabel: String, onEdit: () -> Unit, content: @Composable () -> Unit) {
+    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Color.White).padding(16.dp)) {
+        DSectionHead(title, editLabel, onEdit)
+        content()
     }
+}
+
+// แถวข้อมูล: colon = true แสดง "ชื่อ : ข้อมูล" ชิดซ้าย  (colon = false ตามหน้ารายละเอียดเดิมของเว็บ)
+@Composable
+private fun DRows(rows: List<DR>, colon: Boolean) {
+    for (i in rows.indices) {
+        val r = rows[i]
+        Row(Modifier.fillMaxWidth().padding(vertical = 7.dp)) {
+            Text(r.label, fontSize = 13.sp, color = r.labelColor, modifier = Modifier.width(if (colon) 84.dp else 90.dp))
+            if (colon) Text(":", fontSize = 13.sp, color = r.labelColor, modifier = Modifier.width(14.dp))
+            Text(
+                r.value, fontSize = if (r.small) 11.sp else 13.sp, fontWeight = FontWeight.Bold, color = r.color,
+                textAlign = TextAlign.Start, modifier = Modifier.weight(1f)
+            )
+        }
+        if (i < rows.size - 1) HorizontalDivider(color = DRowLine)
+    }
+}
+
+@Composable
+private fun DPriceRow(label: String, value: String, last: Boolean) {
+    Row(Modifier.fillMaxWidth().padding(top = if (last) 12.dp else 7.dp, bottom = 7.dp)) {
+        Text(label, fontSize = if (last) 16.sp else 14.sp, fontWeight = if (last) FontWeight.ExtraBold else FontWeight.Normal, color = if (last) DGreen else C.Subtext, modifier = Modifier.weight(1f))
+        Text(value, fontSize = if (last) 16.sp else 14.sp, fontWeight = if (last) FontWeight.ExtraBold else FontWeight.Normal, color = if (last) DGreen else C.Text)
+    }
+    if (!last) HorizontalDivider(color = DRowLine)
 }
 
 @Composable
 private fun DAct(text: String, modifier: Modifier, green: Boolean, onClick: () -> Unit) {
     Box(
         modifier.height(40.dp).clip(RoundedCornerShape(12.dp))
-            .background(if (green) Color(0xFFDCFCE7) else C.PrimaryLight).clickable { onClick() },
+            .background(if (green) DGreenL else C.PrimaryLight).clickable { onClick() },
         contentAlignment = Alignment.Center
-    ) { Text(text, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = if (green) DGreen else C.Primary) }
+    ) { Text(text, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = if (green) DGreen else C.Primary) }
 }
