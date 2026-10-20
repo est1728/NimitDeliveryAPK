@@ -11,8 +11,10 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -20,6 +22,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -75,8 +78,15 @@ private fun adminIsToday(o: AdminOrd): Boolean {
 }
 
 @Composable
-fun AdminOrdersPage(s: AdminSession, store: AdminOrdersStore, onOpen: (String) -> Unit) {
+fun AdminOrdersPage(
+    s: AdminSession,
+    store: AdminOrdersStore,
+    onOpen: (String) -> Unit,
+    onMenu: () -> Unit,
+    onCreate: () -> Unit
+) {
     var filter by remember { mutableStateOf("all") }
+    var showStats by remember { mutableStateOf(false) }
     val scope: Set<String> = store.shopIds.value
     val all: List<AdminOrd> = store.orders.value.filter { scope.contains(it.s("shopId")) }
     val list: List<AdminOrd> = if (filter == "all") all else all.filter { it.status == filter }
@@ -85,22 +95,50 @@ fun AdminOrdersPage(s: AdminSession, store: AdminOrdersStore, onOpen: (String) -
     val rev: Long = Math.round(today.sumOf { it.n("grandTotal") })
 
     Column(Modifier.fillMaxSize().background(C.Gray)) {
-        // หัว + สถิติ (ตาม .dash-top)
+        // หัว (ตาม .dash-top)
         Column(
             Modifier.fillMaxWidth()
                 .background(Brush.linearGradient(listOf(C.Primary, C.PrimaryDark)))
-                .padding(horizontal = 16.dp, vertical = 12.dp)
+                .statusBarsPadding()
+                .padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 12.dp)
         ) {
-            Text("จัดการระบบ · " + s.name, fontSize = 11.sp, color = Color.White.copy(alpha = 0.8f))
-            Text("ออเดอร์วันนี้", fontSize = 17.sp, fontWeight = FontWeight.ExtraBold, color = Color.White, modifier = Modifier.padding(bottom = 10.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                AdminStat("Active", all.size.toString(), Modifier.weight(1f))
-                AdminStat("วันนี้", today.size.toString(), Modifier.weight(1f))
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("จัดการระบบ", fontSize = 11.sp, color = Color.White.copy(alpha = 0.8f))
+                    Text("ออเดอร์วันนี้", fontSize = 17.sp, fontWeight = FontWeight.ExtraBold, color = Color.White)
+                }
+                Box(
+                    Modifier.size(34.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.2f)).clickable { onMenu() },
+                    contentAlignment = Alignment.Center
+                ) { Icon(AdminIcMenu, null, tint = Color.White, modifier = Modifier.size(18.dp)) }
+                Spacer(Modifier.width(8.dp))
+                Box(
+                    Modifier.height(34.dp).clip(RoundedCornerShape(20.dp))
+                        .background(Brush.linearGradient(listOf(AGreen, Color(0xFF15803D))))
+                        .clickable { onCreate() }.padding(horizontal = 14.dp),
+                    contentAlignment = Alignment.Center
+                ) { Text("+ สร้างออเดอร์", fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = Color.White) }
             }
-            Spacer(Modifier.size(8.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                AdminStat("รายได้", "฿" + rev, Modifier.weight(1f))
-                AdminStat("รอรับ", pend.toString(), Modifier.weight(1f))
+            // ปุ่มพับ/แสดงสถิติ (ปิดไว้ก่อน)
+            Box(Modifier.fillMaxWidth().padding(top = 10.dp), contentAlignment = Alignment.Center) {
+                Box(
+                    Modifier.clip(RoundedCornerShape(20.dp)).background(Color.White.copy(alpha = 0.2f))
+                        .clickable { showStats = !showStats }.padding(horizontal = 18.dp, vertical = 6.dp)
+                ) {
+                    Text(if (showStats) "▲ ซ่อนสถิติ" else "▼ ดูสถิติ", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                }
+            }
+            if (showStats) {
+                Spacer(Modifier.height(10.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    AdminStat("Active", all.size.toString(), Modifier.weight(1f))
+                    AdminStat("วันนี้", today.size.toString(), Modifier.weight(1f))
+                }
+                Spacer(Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    AdminStat("รายได้", "฿" + rev, Modifier.weight(1f))
+                    AdminStat("รอรับ", pend.toString(), Modifier.weight(1f))
+                }
             }
         }
         // แท็บสถานะ (ตาม .ftabs)

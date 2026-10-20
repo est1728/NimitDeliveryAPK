@@ -19,6 +19,7 @@ class AdminSession(val franchiseId: String, val name: String, val groupId: Strin
  */
 object AdminRepo {
     private const val PREF = "nimit_admin"
+    private const val BAD = "เบอร์หรือรหัสไม่ถูกต้อง"
 
     fun load(ctx: Context): AdminSession? {
         val p = ctx.getSharedPreferences(PREF, Context.MODE_PRIVATE)
@@ -47,19 +48,19 @@ object AdminRepo {
         return try {
             val snap = FirebaseFirestore.getInstance().collection("franchises")
                 .whereEqualTo("phone", ph).limit(1).get().await()
-            val d = snap.documents.firstOrNull() ?: return "[1] ไม่พบเขตที่ใช้เบอร์ " + ph + " (ตรวจเบอร์ในแอปผู้พัฒนา)"
+            val d = snap.documents.firstOrNull() ?: return BAD
             if (d.getString("status") == "suspended") return "เขตนี้ถูกระงับการใช้งาน"
             val alg = d.getString("pinAlg") ?: ""
             val salt = d.getString("pinSalt") ?: ""
             val hash = d.getString("pinHash") ?: ""
-            if (hash.isEmpty() || salt.isEmpty()) return "[2] เขตนี้ยังไม่มีรหัสเก็บไว้ในฐานข้อมูล (pinHash ว่าง)"
-            if (alg != "pbkdf2-sha1-100000") return "[3] รูปแบบเข้ารหัสไม่ตรง: " + alg
+            if (hash.isEmpty() || salt.isEmpty()) return BAD
+            if (alg != "pbkdf2-sha1-100000") return BAD
             val ok = withContext(Dispatchers.Default) {
                 val spec = PBEKeySpec(pin.toCharArray(), hexToBytes(salt), 100000, 256)
                 val h = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA1").generateSecret(spec).encoded
                 MessageDigest.isEqual(h, hexToBytes(hash))
             }
-            if (!ok) return "[4] รหัสไม่ตรง (พิมพ์ " + pin.length + " ตัว) ตัวพิมพ์เล็ก/ใหญ่มีผล"
+            if (!ok) return BAD
             val gid = d.getString("backendGroupId") ?: d.id
             save(ctx, AdminSession(d.id, d.getString("name") ?: "", gid, ph))
             null
