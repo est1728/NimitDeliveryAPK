@@ -75,7 +75,7 @@ private fun adminIsToday(o: AdminOrd): Boolean {
 }
 
 @Composable
-fun AdminOrdersPage(s: AdminSession, store: AdminOrdersStore) {
+fun AdminOrdersPage(s: AdminSession, store: AdminOrdersStore, onOpen: (String) -> Unit) {
     var filter by remember { mutableStateOf("all") }
     val scope: Set<String> = store.shopIds.value
     val all: List<AdminOrd> = store.orders.value.filter { scope.contains(it.s("shopId")) }
@@ -138,7 +138,7 @@ fun AdminOrdersPage(s: AdminSession, store: AdminOrdersStore) {
                     }
                 }
             }
-            items(list, key = { it.id }) { o -> AdminOrderCard(o) }
+            items(list, key = { it.id }) { o -> AdminOrderCard(o) { onOpen(o.id) } }
         }
     }
 }
@@ -158,7 +158,7 @@ private fun AdminDot(on: Boolean) {
 
 // การ์ดออเดอร์ ตาม .ocard ของ admin.html
 @Composable
-private fun AdminOrderCard(o: AdminOrd) {
+private fun AdminOrderCard(o: AdminOrd, onClick: () -> Unit) {
     val st = o.status
     val pill = adminPill(st)
     val viewing: Boolean = o.date("riderViewingAt")?.let { System.currentTimeMillis() - it.time < 20000L } ?: false
@@ -166,7 +166,7 @@ private fun AdminOrderCard(o: AdminOrd) {
     val addrRaw = o.cust("address")
     val addr = if (addrRaw.isEmpty()) "-" else if (addrRaw.length > 30) addrRaw.substring(0, 30) + "..." else addrRaw
 
-    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Color.White)) {
+    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Color.White).clickable { onClick() }) {
         Row(
             Modifier.fillMaxWidth().padding(start = 14.dp, end = 14.dp, top = 12.dp, bottom = 10.dp),
             verticalAlignment = Alignment.CenterVertically

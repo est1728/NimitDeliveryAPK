@@ -15,10 +15,10 @@ class AdminSession(val franchiseId: String, val name: String, val groupId: Strin
  * ล็อกอินแอดมินเขต: ตรวจเบอร์+รหัสครั้งเดียวตอนล็อกอิน แล้วเก็บเซสชันในเครื่อง
  * เปิดแอปครั้งต่อไปอ่านเซสชันนี้ตรงๆ ไม่ตรวจซ้ำ จนกว่าจะกดออกจากระบบ
  * หมายเหตุ: ตอนนี้ตรวจ PBKDF2 ในเครื่อง (pinHash อ่านได้จาก franchises) ขั้นถัดไปจะย้ายไปตรวจที่เซิร์ฟเวอร์
+ * (เวอร์ชันวินิจฉัย: ข้อความผิดพลาดแยกตามขั้น ต้องเปลี่ยนกลับเป็นข้อความทั่วไปก่อนใช้งานจริง)
  */
 object AdminRepo {
     private const val PREF = "nimit_admin"
-    private const val BAD = "เบอร์หรือรหัสไม่ถูกต้อง"
 
     fun load(ctx: Context): AdminSession? {
         val p = ctx.getSharedPreferences(PREF, Context.MODE_PRIVATE)
@@ -40,23 +40,26 @@ object AdminRepo {
         ByteArray(s.length / 2) { s.substring(it * 2, it * 2 + 2).toInt(16).toByte() }
 
     // คืน null = สำเร็จ, ไม่ใช่ null = ข้อความผิดพลาด
-    suspend fun login(ctx: Context, phone: String, pin: String): String? {
+    suspend fun login(ctx: Context, phone: String, pinRaw: String): String? {
         val ph = phone.trim()
+        val pin = pinRaw.trim()
         if (ph.isEmpty() || pin.isEmpty()) return "กรุณากรอกเบอร์และรหัส"
         return try {
             val snap = FirebaseFirestore.getInstance().collection("franchises")
                 .whereEqualTo("phone", ph).limit(1).get().await()
-            val d = snap.documents.firstOrNull() ?: return BAD
+            val d = snap.documents.firstOrNull() ?: return "[1] ไม่พบเขตที่ใช้เบอร์ " + ph + " (ตรวจเบอร์ในแอปผู้พัฒนา)"
             if (d.getString("status") == "suspended") return "เขตนี้ถูกระงับการใช้งาน"
-            if (d.getString("pinAlg") != "pbkdf2-sha1-100000") return BAD
-            val salt = d.getString("pinSalt") ?: return BAD
-            val hash = d.getString("pinHash") ?: return BAD
+            val alg = d.getString("pinAlg") ?: ""
+            val salt = d.getString("pinSalt") ?: ""
+            val hash = d.getString("pinHash") ?: ""
+            if (hash.isEmpty() || salt.isEmpty()) return "[2] เขตนี้ยังไม่มีรหัสเก็บไว้ในฐานข้อมูล (pinHash ว่าง)"
+            if (alg != "pbkdf2-sha1-100000") return "[3] รูปแบบเข้ารหัสไม่ตรง: " + alg
             val ok = withContext(Dispatchers.Default) {
                 val spec = PBEKeySpec(pin.toCharArray(), hexToBytes(salt), 100000, 256)
                 val h = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA1").generateSecret(spec).encoded
                 MessageDigest.isEqual(h, hexToBytes(hash))
             }
-            if (!ok) return BAD
+            if (!ok) return "[4] รหัสไม่ตรง (พิมพ์ " + pin.length + " ตัว) ตัวพิมพ์เล็ก/ใหญ่มีผล"
             val gid = d.getString("backendGroupId") ?: d.id
             save(ctx, AdminSession(d.id, d.getString("name") ?: "", gid, ph))
             null
