@@ -110,6 +110,8 @@ fun ShopNav() {
                 onLoyalty = { nav.navigate("loyalty") },
                 onEditInfo = { nav.navigate("manage") },
                 onAds = { nav.navigate("ads") },
+                onTerms = { nav.navigate("terms") },
+                onPrivacy = { nav.navigate("privacy") },
                 onLogout = {
                     ShopFcm.unregister(ctx, s.shopId)
                     session.logout()

@@ -57,6 +57,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -78,7 +79,7 @@ import kotlinx.coroutines.launch
 private val SHOP_GRAD = Brush.linearGradient(listOf(C.Primary, C.PrimaryDark))
 
 @Composable
-fun ShopHome(store: ShopStore, onOpenOrder: (String) -> Unit, onReviews: () -> Unit, onLoyalty: () -> Unit, onEditInfo: () -> Unit, onAds: () -> Unit, onLogout: () -> Unit) {
+fun ShopHome(store: ShopStore, onOpenOrder: (String) -> Unit, onReviews: () -> Unit, onLoyalty: () -> Unit, onEditInfo: () -> Unit, onAds: () -> Unit, onTerms: () -> Unit, onPrivacy: () -> Unit, onLogout: () -> Unit) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     val shop: Map<String, Any> = store.shop.value
@@ -203,6 +204,8 @@ fun ShopHome(store: ShopStore, onOpenOrder: (String) -> Unit, onReviews: () -> U
                 scope.launch { try { ShopApi.setLoyalty(store.shopId, !loyaltyOn, target) } catch (e: Exception) { shopToast(ctx, "บันทึกไม่สำเร็จ") } }
             },
             onDelete = { sidebar = false; showDelete = true },
+            onTerms = { sidebar = false; onTerms() },
+            onPrivacy = { sidebar = false; onPrivacy() },
             onLogout = { sidebar = false; onLogout() }
         )
 
@@ -322,7 +325,7 @@ private fun ShopHistoryCard(o: ShopOrd, onClick: () -> Unit) {
 @Composable
 private fun ShopSidebar(
     visible: Boolean, name: String, sub: String, avatar: String, loyaltyOn: Boolean,
-    onClose: () -> Unit, onSoon: () -> Unit, onEdit: () -> Unit, onAds: () -> Unit, onShare: () -> Unit, onReviews: () -> Unit, onLoyalty: () -> Unit, onDelete: () -> Unit, onLogout: () -> Unit
+    onClose: () -> Unit, onSoon: () -> Unit, onEdit: () -> Unit, onAds: () -> Unit, onShare: () -> Unit, onReviews: () -> Unit, onLoyalty: () -> Unit, onDelete: () -> Unit, onTerms: () -> Unit, onPrivacy: () -> Unit, onLogout: () -> Unit
 ) {
     AnimatedVisibility(visible, enter = fadeIn(tween(200)), exit = fadeOut(tween(200))) {
         Box(Modifier.fillMaxSize().background(Color(0x66000000)).clickable(indication = null, interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }) { onClose() })
@@ -364,6 +367,12 @@ private fun ShopSidebar(
                     "ขอลบบัญชีร้าน", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = C.Subtext,
                     modifier = Modifier.fillMaxWidth().clickable { onDelete() }.padding(horizontal = 20.dp, vertical = 16.dp)
                 )
+                // ลิงก์เล็กๆ ท้ายเมนู (Play ต้องการให้เข้าถึงนโยบายความเป็นส่วนตัวได้จากในแอปหลังล็อกอินด้วย)
+                Row(Modifier.fillMaxWidth().navigationBarsPadding().padding(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 24.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+                    Text("เงื่อนไขการใช้บริการ", fontSize = 12.sp, color = C.Subtext, textDecoration = TextDecoration.Underline, modifier = Modifier.clickable { onTerms() }.padding(8.dp))
+                    Text("·", fontSize = 12.sp, color = C.Subtext)
+                    Text("นโยบายข้อมูลส่วนบุคคล", fontSize = 12.sp, color = C.Subtext, textDecoration = TextDecoration.Underline, modifier = Modifier.clickable { onPrivacy() }.padding(8.dp))
+                }
             }
         }
     }
