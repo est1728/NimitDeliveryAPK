@@ -20,6 +20,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -90,24 +92,41 @@ fun OtpScreen(session: Session, onBack: () -> Unit, onDone: (registered: Boolean
 
     LaunchedEffect(code) { if (code.length == 6 && verificationId != null && !busy) verify() }
 
-    Column(Modifier.fillMaxSize().background(Color.White)) {
-        TopBar("ยืนยันเบอร์โทรศัพท์", onBack)
-        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp)) {
-            Text("กรอกรหัส OTP 6 หลัก", fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, color = C.Text)
-            Spacer(Modifier.height(6.dp))
-            Text("เราส่งรหัสไปที่ $phone", fontSize = 14.sp, color = C.Subtext)
-            Spacer(Modifier.height(20.dp))
+    Column(Modifier.fillMaxSize().background(C.Gray).verticalScroll(rememberScrollState())) {
+        Box(Modifier.fillMaxWidth().background(Brush.linearGradient(listOf(C.Primary, C.PrimaryDark))).statusBarsPadding()) {
+            Text(
+                "‹", fontSize = 34.sp, fontWeight = FontWeight.Bold, color = Color.White,
+                modifier = Modifier.clickable { onBack() }.padding(horizontal = 18.dp, vertical = 6.dp)
+            )
+            Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 36.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Box(Modifier.size(72.dp).clip(RoundedCornerShape(22.dp)).background(Color.White.copy(alpha = 0.18f)), contentAlignment = Alignment.Center) {
+                    Text("📱", fontSize = 32.sp)
+                }
+                Spacer(Modifier.height(14.dp))
+                Text("ยืนยันเบอร์โทรศัพท์", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = Color.White)
+                Text("Nimit Delivery", fontSize = 13.sp, color = Color.White.copy(alpha = 0.8f), modifier = Modifier.padding(top = 4.dp))
+            }
+        }
+        Column(
+            Modifier.padding(16.dp).fillMaxWidth().shadow(4.dp, RoundedCornerShape(20.dp)).clip(RoundedCornerShape(20.dp)).background(Color.White).padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text("กรอกรหัส OTP 6 หลัก", fontSize = 17.sp, fontWeight = FontWeight.ExtraBold, color = C.Text)
+            Text("เราส่งรหัสไปที่ $phone", fontSize = 13.sp, color = C.Subtext)
             OtpBoxes(code, { code = it; msg = null }) { verify() }
-            msg?.let { Text(it, fontSize = 13.sp, color = Color(0xFFE53935), modifier = Modifier.padding(top = 6.dp)) }
-            Spacer(Modifier.height(20.dp))
+            msg?.let { Text(it, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color(0xFFE53935)) }
             GradientButton(if (busy) "กำลังตรวจสอบ..." else "ยืนยัน", enabled = code.length == 6 && !busy && verificationId != null) { verify() }
-            Spacer(Modifier.height(16.dp))
             Text(
                 if (countdown > 0) "ขอรหัสใหม่ได้ใน $countdown วินาที" else "ส่งรหัสอีกครั้ง",
-                fontSize = 14.sp, fontWeight = FontWeight.Bold,
+                fontSize = 13.sp, fontWeight = FontWeight.Bold,
                 color = if (countdown > 0) C.Subtext else C.Primary,
                 modifier = Modifier.fillMaxWidth().clickable(enabled = countdown == 0 && !busy) { send() }.padding(8.dp),
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center
+            )
+            Text(
+                "เปลี่ยนเบอร์", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = C.Primary,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                modifier = Modifier.fillMaxWidth().clickable { onBack() }.padding(8.dp)
             )
         }
     }

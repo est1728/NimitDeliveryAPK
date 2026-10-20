@@ -48,7 +48,7 @@ private val CheckCircle: ImageVector by lazy {
 }
 
 @Composable
-fun LoginScreen(session: Session, onNeedOtp: () -> Unit, onLoggedIn: () -> Unit, onNewCustomer: () -> Unit) {
+fun LoginScreen(session: Session, onTerms: () -> Unit, onPrivacy: () -> Unit, onNeedOtp: () -> Unit, onLoggedIn: () -> Unit, onNewCustomer: () -> Unit) {
     val scope = rememberCoroutineScope()
     val savedPhone = remember { session.customerPhone.orEmpty() }
     var phone by remember { mutableStateOf(savedPhone) }
@@ -172,6 +172,8 @@ fun LoginScreen(session: Session, onNeedOtp: () -> Unit, onLoggedIn: () -> Unit,
                 fontSize = 13.sp, lineHeight = 21.sp, color = C.Subtext,
                 textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth()
             )
+            Spacer(Modifier.height(20.dp))
+            LegalFooter(onTerms, onPrivacy)
         }
     }
 }
