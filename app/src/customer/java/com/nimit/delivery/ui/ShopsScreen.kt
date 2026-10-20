@@ -381,7 +381,7 @@ fun ShopsScreen(session: Session, onOpenShop: (String, String) -> Unit, onNaviga
                         if (ringMode) RingShopCard(
                             s, true, expandedId == s.id, s.id in favs, session,
                             onToggle = { expandedId = if (expandedId == s.id) null else s.id }, onFav = { toggleFav(s.id) },
-                            onCart = { onNavigate("cart") }, onCheckout = { onNavigate("checkout") },
+                            onReviews = { onNavigate("reviews/shop/${s.id}") }, onGoMenu = { expandedId = s.id }, onCheckout = { onNavigate("checkout") },
                             onLogin = { session.loginReturnRoute = "shops"; onNavigate("login") }
                         ) else ShopCard(s, true, s.id in favs, { pick(s.id, s.name) }, { toggleFav(s.id) }) { onNavigate("reviews/shop/${s.id}") }
                     }
@@ -390,7 +390,7 @@ fun ShopsScreen(session: Session, onOpenShop: (String, String) -> Unit, onNaviga
                     item { Text("ร้านที่ปิดอยู่ตอนนี้", fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = N.Ink300, modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 18.dp, bottom = 9.dp)) }
                     items(closedList, key = { it.id }) { s ->
                         Box(Modifier.padding(horizontal = 16.dp, vertical = 6.5.dp)) {
-                            if (ringMode) RingShopCard(s, false, false, s.id in favs, session, onToggle = {}, onFav = { toggleFav(s.id) }, onCart = {}, onCheckout = {}, onLogin = {})
+                            if (ringMode) RingShopCard(s, false, false, s.id in favs, session, onToggle = {}, onFav = { toggleFav(s.id) }, onReviews = { onNavigate("reviews/shop/${s.id}") }, onGoMenu = {}, onCheckout = {}, onLogin = {})
                             else ShopCard(s, false, s.id in favs, {}, { toggleFav(s.id) }) {}
                         }
                     }
@@ -439,21 +439,25 @@ fun ShopsScreen(session: Session, onOpenShop: (String, String) -> Unit, onNaviga
             Box(Modifier.fillMaxSize().background(N.B900.copy(alpha = 0.45f)).clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { sidebar = false })
         }
         AnimatedVisibility(sidebar, Modifier.align(Alignment.CenterEnd), enter = slideInHorizontally { it }, exit = slideOutHorizontally { it }) {
-            Column(Modifier.width(310.dp).fillMaxHeight().shadow(16.dp).background(Color.White)) {
-                Row(Modifier.fillMaxWidth().background(Brush.linearGradient(listOf(N.B900, N.B700))).statusBarsPadding().padding(horizontal = 16.dp, vertical = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Logo(40)
-                    Spacer(Modifier.width(10.dp))
+            Column(Modifier.width(284.dp).fillMaxHeight().shadow(16.dp).background(Color.White)) {
+                Row(Modifier.fillMaxWidth().background(Brush.linearGradient(listOf(N.B800, N.B900))).statusBarsPadding().padding(horizontal = 18.dp, vertical = 22.dp), verticalAlignment = Alignment.Top) {
+                    Logo(38)
+                    Spacer(Modifier.width(11.dp))
                     Column(Modifier.weight(1f)) {
-                        Text("Nimit Delivery", fontSize = 19.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                        Text("เมนูของฉัน", fontSize = 14.sp, color = Color.White.copy(alpha = 0.85f))
+                        Text("Nimit Delivery", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
+                        Text("เมนูของฉัน", fontSize = 11.5.sp, color = Color.White.copy(alpha = 0.7f), modifier = Modifier.padding(top = 2.dp))
                     }
-                    Text("✕", color = Color.White, fontSize = 22.sp, modifier = Modifier.clickable { sidebar = false }.padding(8.dp))
+                    Box(Modifier.size(28.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.16f)).clickable { sidebar = false }, contentAlignment = Alignment.Center) {
+                        Text("✕", color = Color.White, fontSize = 14.sp)
+                    }
                 }
-                SidebarNotifRow()
-                SbItem("แก้ไขที่อยู่", customer.optString("address").ifEmpty { "เพิ่มที่อยู่จัดส่ง" }) { sidebar = false; onNavigate("address") }
-                SbItem("ตั้งค่า", "รูปแบบการ์ดร้านค้า") { sidebar = false; onNavigate("settings") }
-                SbItem("สลับบัญชี", loginText) { sidebar = false; showAccounts = true }
-                SbItem("ออกจากระบบ", "เข้าสู่ระบบด้วยเบอร์อื่น") { sidebar = false; onLogout() }
+                Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(vertical = 6.dp)) {
+                    SidebarNotifRow()
+                    SbItem(SbI.PIN, "ที่อยู่จัดส่ง", customer.optString("address").ifEmpty { "เพิ่มที่อยู่จัดส่ง" }) { sidebar = false; onNavigate("address") }
+                    SbItem(SbI.GEAR, "ตั้งค่า", "รูปแบบการ์ดร้านค้า") { sidebar = false; onNavigate("settings") }
+                    SbItem(SbI.PEOPLE, "สลับบัญชี", loginText) { sidebar = false; showAccounts = true }
+                    SbItem(SbI.LOGOUT, "ออกจากระบบ", "เข้าสู่ระบบด้วยเบอร์อื่น", last = true) { sidebar = false; onLogout() }
+                }
             }
         }
 
@@ -533,16 +537,25 @@ private fun cartCount(session: Session): Int = try {
     }
 }
 
-@Composable private fun SbItem(title: String, sub: String, onClick: () -> Unit) {
+private object SbI {
+    const val PIN = "M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5S10.62 6.5 12 6.5s2.5 1.12 2.5 2.5S13.38 11.5 12 11.5z"
+    const val LOGOUT = "M16 17v-3H9v-4h7V7l5 5-5 5M14 2a2 2 0 0 1 2 2v2h-2V4H5v16h9v-2h2v2a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9z"
+    const val GEAR = "M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.488.488 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 0 0-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"
+    const val PEOPLE = "M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"
+}
+
+@Composable private fun SbItem(icon: String, title: String, sub: String, last: Boolean = false, onClick: () -> Unit) {
     Column(Modifier.fillMaxWidth().clickable { onClick() }) {
-        Row(Modifier.padding(horizontal = 18.dp, vertical = 15.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.padding(horizontal = 18.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+            PathIcon(icon, N.Ink500, 19.dp)
+            Spacer(Modifier.width(13.dp))
             Column(Modifier.weight(1f)) {
-                Text(title, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = N.Ink900)
-                Text(sub, fontSize = 13.sp, color = N.Ink500, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(title, fontSize = 13.5.sp, fontWeight = FontWeight.SemiBold, color = N.Ink900)
+                Text(sub, fontSize = 11.sp, color = N.Ink500, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 1.dp))
             }
-            PathIcon(P.CHEVRON, N.Ink300, 18.dp)
+            PathIcon(P.CHEVRON, N.Ink300, 14.dp)
         }
-        HorizontalDivider(color = N.Line)
+        if (!last) HorizontalDivider(color = N.Line)
     }
 }
 

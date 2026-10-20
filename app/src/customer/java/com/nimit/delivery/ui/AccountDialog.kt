@@ -194,10 +194,12 @@ fun SidebarNotifRow() {
         if (canAsk) launcher.launch(Manifest.permission.POST_NOTIFICATIONS) else ctx.openNotifSettings()
     }
     Column(Modifier.fillMaxWidth()) {
-        Row(Modifier.padding(horizontal = 18.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.padding(horizontal = 18.dp, vertical = 11.dp), verticalAlignment = Alignment.CenterVertically) {
+            PathIcon(P.BELL, N.Ink500, 19.dp)
+            Spacer(Modifier.width(13.dp))
             Column(Modifier.weight(1f)) {
-                Text("การแจ้งเตือน", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = N.Ink900)
-                Text(if (!granted) "ปิดอยู่ในเครื่อง · เปิดสวิตช์เพื่อตั้งค่า" else if (pref) "เปิดอยู่ · แจ้งสถานะออเดอร์และข่าวสาร" else "ปิดอยู่", fontSize = 13.sp, color = N.Ink500)
+                Text("การแจ้งเตือน", fontSize = 13.5.sp, fontWeight = FontWeight.SemiBold, color = N.Ink900)
+                Text(if (!granted) "ปิดอยู่ในเครื่อง · เปิดสวิตช์เพื่อตั้งค่า" else if (pref) "เปิดอยู่ · แจ้งสถานะออเดอร์และข่าวสาร" else "ปิดอยู่", fontSize = 11.sp, color = N.Ink500)
             }
             Box(Modifier.width(42.dp).height(26.dp), contentAlignment = Alignment.Center) {
                 Switch(checked = on, onCheckedChange = { toggle(it) }, modifier = Modifier.requiredSize(52.dp, 32.dp).scale(0.8f), colors = SwitchDefaults.colors(checkedTrackColor = N.B600, checkedThumbColor = Color.White))

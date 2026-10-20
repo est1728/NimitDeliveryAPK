@@ -4,6 +4,7 @@ import android.widget.Toast
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.keyframes
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.animateDpAsState
@@ -28,7 +29,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -68,7 +72,7 @@ private object RingPricingCache { var base: Pricing? = null }
 @Composable
 fun RingShopCard(
     s: Shop, open: Boolean, expanded: Boolean, fav: Boolean, session: Session,
-    onToggle: () -> Unit, onFav: () -> Unit, onCart: () -> Unit, onCheckout: () -> Unit, onLogin: () -> Unit
+    onToggle: () -> Unit, onFav: () -> Unit, onReviews: () -> Unit, onGoMenu: () -> Unit, onCheckout: () -> Unit, onLogin: () -> Unit
 ) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -80,6 +84,29 @@ fun RingShopCard(
     var searching by remember { mutableStateOf(false) }
     var popup by remember { mutableStateOf<PopupState?>(null) }
     var tick by remember { mutableIntStateOf(0) }
+    var profile by remember { mutableStateOf(false) }
+    var cartList by remember { mutableStateOf(false) }
+    var searchShown by remember { mutableStateOf(false) }
+    val sx = remember { Animatable(0.12f) }
+    val sy = remember { Animatable(0.8f) }
+    val sAlpha = remember { Animatable(0f) }
+    val focus = remember { FocusRequester() }
+
+    fun openSearch() {
+        searchShown = true; searching = true
+        scope.launch { sx.snapTo(0.12f); sx.animateTo(1f, keyframes { durationMillis = 800; 1.04f at 240; 0.985f at 384; 1.012f at 528; 0.998f at 656; 1f at 800 }) }
+        scope.launch { sy.snapTo(0.8f); sy.animateTo(1f, keyframes { durationMillis = 800; 1.12f at 240; 0.92f at 384; 1.04f at 528; 0.985f at 656; 1f at 800 }) }
+        scope.launch { sAlpha.snapTo(0f); delay(250); sAlpha.animateTo(1f, tween(200)); try { focus.requestFocus() } catch (_: Exception) { } }
+    }
+    fun closeSearch() {
+        scope.launch {
+            sAlpha.snapTo(0f)
+            launch { sx.animateTo(0.12f, keyframes { durationMillis = 320; 0.55f at 128; 0.12f at 320 }) }
+            launch { sy.animateTo(0.8f, tween(320)) }
+            delay(330)
+            query = ""; searching = false; searchShown = false
+        }
+    }
 
     LaunchedEffect(expanded) {
         if (expanded) {
@@ -94,7 +121,7 @@ fun RingShopCard(
             } catch (_: Exception) { failed = true }
         } else {
             delay(420)
-            menus = null; cat = "ทั้งหมด"; query = ""; searching = false
+            menus = null; cat = "ทั้งหมด"; query = ""; searching = false; searchShown = false
         }
     }
 
@@ -126,7 +153,7 @@ fun RingShopCard(
     ) {
         Row(Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, top = if (expanded) 12.dp else 16.dp, bottom = if (expanded) 0.dp else 16.dp), verticalAlignment = Alignment.Top) {
             Box(
-                Modifier.size(thumb).clip(RoundedCornerShape(if (expanded) 10.dp else 14.dp)).background(Brush.linearGradient(listOf(N.B500, N.B800))),
+                Modifier.size(thumb).clip(RoundedCornerShape(if (expanded) 10.dp else 14.dp)).background(Brush.linearGradient(listOf(N.B500, N.B800))).clickable { profile = true },
                 contentAlignment = Alignment.Center
             ) {
                 if (s.avatarUrl.isNotEmpty()) AsyncImage(s.avatarUrl, null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
@@ -167,27 +194,10 @@ fun RingShopCard(
         }
 
         if (expanded) {
-            // แถบหมวด + ค้นหา
-            Row(Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, top = 8.dp).height(36.dp), verticalAlignment = Alignment.CenterVertically) {
-                if (searching) {
-                    Row(
-                        Modifier.fillMaxWidth().height(36.dp).clip(RoundedCornerShape(18.dp)).background(N.B50).border(1.dp, Color(0xFFBFD0EE), RoundedCornerShape(18.dp)).padding(start = 12.dp, end = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        PathIcon(P.SEARCH, N.B600, 17.dp)
-                        Box(Modifier.weight(1f).padding(horizontal = 8.dp)) {
-                            if (query.isEmpty()) Text("ค้นหาเมนูในร้านนี้", fontSize = 14.sp, color = Color(0xFF94A3B8))
-                            BasicTextField(query, { query = it }, singleLine = true, textStyle = TextStyle(fontSize = 15.sp, color = N.B800), modifier = Modifier.fillMaxWidth())
-                        }
-                        Box(Modifier.size(28.dp).clip(CircleShape).background(N.B100).clickable { query = ""; searching = false }, contentAlignment = Alignment.Center) {
-                            Text("✕", fontSize = 12.sp, color = N.B600)
-                        }
-                    }
-                } else {
-                    Box(Modifier.size(36.dp).clip(CircleShape).background(N.B50).border(1.dp, Color(0xFFBFD0EE), CircleShape).clickable { searching = true }, contentAlignment = Alignment.Center) {
-                        PathIcon(P.SEARCH, N.B600, 17.dp)
-                    }
-                    LazyRow(Modifier.padding(start = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+            // แถบหมวด + ค้นหา (ช่องค้นหาขยายแบบหยดน้ำออกจากปุ่มแว่นขยาย)
+            Box(Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, top = 8.dp).height(36.dp)) {
+                if (!searchShown) {
+                    LazyRow(Modifier.padding(start = 44.dp).fillMaxHeight(), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                         items(cats) { c ->
                             val on = c == cat
                             Text(
@@ -197,7 +207,26 @@ fun RingShopCard(
                             )
                         }
                     }
+                } else {
+                    Box(
+                        Modifier.fillMaxSize().graphicsLayer { scaleX = sx.value; scaleY = sy.value; transformOrigin = TransformOrigin(0f, 0.5f) }
+                            .clip(RoundedCornerShape(18.dp)).background(N.B50).border(1.dp, Color(0xFFBFD0EE), RoundedCornerShape(18.dp))
+                    )
+                    Row(Modifier.fillMaxSize().padding(end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.size(36.dp), contentAlignment = Alignment.Center) { PathIcon(P.SEARCH, N.B600, 17.dp) }
+                        Box(Modifier.weight(1f).padding(horizontal = 4.dp).alpha(sAlpha.value)) {
+                            if (query.isEmpty()) Text("ค้นหาเมนูในร้านนี้", fontSize = 15.sp, color = Color(0xFF94A3B8))
+                            BasicTextField(query, { query = it }, singleLine = true, textStyle = TextStyle(fontSize = 16.sp, color = N.B800), modifier = Modifier.fillMaxWidth().focusRequester(focus))
+                        }
+                        Box(Modifier.alpha(sAlpha.value).size(28.dp).clip(CircleShape).background(N.B100).clickable { closeSearch() }, contentAlignment = Alignment.Center) {
+                            Text("✕", fontSize = 12.sp, color = N.B600)
+                        }
+                    }
                 }
+                if (!searchShown) Box(
+                    Modifier.size(36.dp).clip(CircleShape).background(N.B50).border(1.dp, Color(0xFFBFD0EE), CircleShape).clickable { openSearch() },
+                    contentAlignment = Alignment.Center
+                ) { PathIcon(P.SEARCH, N.B600, 17.dp) }
             }
 
             // วงแหวนเมนู
@@ -228,7 +257,7 @@ fun RingShopCard(
                             },
                         contentAlignment = Alignment.Center
                     ) { Text("สรุปการสั่งซื้อ ($inCart)", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.White) }
-                    Box(Modifier.size(42.dp).clip(RoundedCornerShape(14.dp)).background(N.B100).clickable { onCart() }, contentAlignment = Alignment.Center) {
+                    Box(Modifier.size(42.dp).clip(RoundedCornerShape(14.dp)).background(N.B100).clickable { cartList = true }, contentAlignment = Alignment.Center) {
                         PathIcon("M3 13h2v-2H3v2zm0 4h2v-2H3v2zm0-8h2V7H3v2zm4 4h14v-2H7v2zm0 4h14v-2H7v2zM7 7v2h14V7H7z", N.B600, 22.dp)
                     }
                 }
@@ -237,22 +266,25 @@ fun RingShopCard(
     }
 
     popup?.let { p ->
-        ItemSheet(p, pricing, onDismiss = { popup = null }) { note ->
+        RingWizard(p, pricing, onDismiss = { popup = null }) { note ->
             val phone = try { JSONObject(session.customerData ?: "{}").optString("phone") } catch (_: Exception) { "" }.ifEmpty { session.customerPhone.orEmpty() }
             if (phone.isEmpty()) {
                 Toast.makeText(ctx, "กรุณาเข้าสู่ระบบก่อนสั่งซื้อครับ", Toast.LENGTH_SHORT).show()
-                popup = null; onLogin(); return@ItemSheet
+                popup = null; onLogin(); return@RingWizard
             }
             val miss = p.missing()
-            if (miss.isNotEmpty()) { p.errors = miss; return@ItemSheet }
+            if (miss.isNotEmpty()) { p.errors = miss; return@RingWizard }
             val cart = CartStore.load(session)
             val item = JSONObject().put("id", p.id).put("name", p.m.str("name")).put("basePrice", num(p.m["price"]) ?: 0.0)
                 .put("price", p.unitPrice(pricing)).put("qty", p.qty).put("imgUrl", p.m.str("imgUrl"))
                 .put("options", p.selectedOptions()).put("optionGroups", deepJson(p.m["optionGroups"] ?: emptyList<Any>()))
                 .put("note", note).put("gp", p.menuGp).put("category", p.m.str("category"))
             CartStore.add(cart, s.id, s.name, item); CartStore.save(session, cart); tick++; popup = null
+            Toast.makeText(ctx, "เพิ่มลงตะกร้าแล้ว", Toast.LENGTH_SHORT).show()
         }
     }
+    if (cartList) RingCartSheet(session, s.id, onChanged = { tick++ }, onDismiss = { cartList = false })
+    if (profile) RingProfileSheet(s, open, onReviews = onReviews, onGoMenu = onGoMenu, onDismiss = { profile = false })
 }
 
 @Composable
@@ -298,7 +330,7 @@ private fun RingCarousel(
                             val persp = 700f / (700f - (c - 1f) * RING_RAD * s)
                             translationX = sin(th).toFloat() * RING_RAD * s * persp * density
                             translationY = -(1f - s) * 50f * density
-                            rotationY = -(d * RING_STEP * s)
+                            rotationY = d * RING_STEP * s
                             cameraDistance = 12f * density
                             val sc = (1f + 0.03f * max(0f, (c - 0.87f) / 0.13f) - 0.06f * min(1f, max(0f, (0.87f - c) / 0.37f))) * persp
                             scaleX = sc; scaleY = sc
