@@ -68,7 +68,7 @@ private val FILTERS = listOf(
     Triple("rec", "แนะนำ", P.THUMB), Triple("fav", "ร้านโปรด", P.HEART), Triple("near", "ใกล้ฉัน", P.PIN),
     Triple("rating", "คะแนนสูง", P.STAR), Triple("open", "เปิดอยู่", P.CLOCK)
 )
-private val BADGE_LABEL = mapOf("pop" to "ยอดนิยม", "top" to "คะแนนสูงสุด", "new" to "เปิดใหม่", "fast" to "ส่งไว", "promo" to "โปรโมชัน")
+internal val BADGE_LABEL = mapOf("pop" to "ยอดนิยม", "top" to "คะแนนสูงสุด", "new" to "เปิดใหม่", "fast" to "ส่งไว", "promo" to "โปรโมชัน")
 private val BADGE_COLOR = mapOf("pop" to N.Amber600, "top" to N.B700, "new" to N.Green600, "fast" to Color(0xFF1291A6), "promo" to N.Red500)
 
 private object ShopsCache {
@@ -108,6 +108,8 @@ fun ShopsScreen(session: Session, onOpenShop: (String, String) -> Unit, onNaviga
     var refreshing by remember { mutableStateOf(false) }
     var zoneOut by remember { mutableStateOf(false) }
     var sidebar by remember { mutableStateOf(false) }
+    val ringMode = session.cardStyle == "ring"
+    var expandedId by remember { mutableStateOf<String?>(null) }
     var showAccounts by remember { mutableStateOf(false) }
     NotifPermissionOnce()
     if (showAccounts) AccountDialog(session, onDismiss = { showAccounts = false }, onAdd = { showAccounts = false; session.loginReturnRoute = "shops"; onNavigate("login") }, onSwitched = { showAccounts = false; onNavigate("__reload") }, onLogout = { showAccounts = false; onLogout() })
@@ -375,12 +377,22 @@ fun ShopsScreen(session: Session, onOpenShop: (String, String) -> Unit, onNaviga
                 item { SectionTitle(if (filters.size == 1 && "rec" in filters) "ร้านทั้งหมด" else "ร้านทั้งหมด (${open.size})", top = 16) }
                 if (loading) items(3) { Box(Modifier.padding(horizontal = 16.dp, vertical = 6.dp).fillMaxWidth().height(190.dp).clip(RoundedCornerShape(20.dp)).background(N.B100)) }
                 items(openList, key = { it.id }) { s ->
-                    Box(Modifier.padding(horizontal = 16.dp, vertical = 6.5.dp)) { ShopCard(s, true, s.id in favs, { pick(s.id, s.name) }, { toggleFav(s.id) }) { onNavigate("reviews/shop/${s.id}") } }
+                    Box(Modifier.padding(horizontal = 16.dp, vertical = 6.5.dp)) {
+                        if (ringMode) RingShopCard(
+                            s, true, expandedId == s.id, s.id in favs, session,
+                            onToggle = { expandedId = if (expandedId == s.id) null else s.id }, onFav = { toggleFav(s.id) },
+                            onCart = { onNavigate("cart") }, onCheckout = { onNavigate("checkout") },
+                            onLogin = { session.loginReturnRoute = "shops"; onNavigate("login") }
+                        ) else ShopCard(s, true, s.id in favs, { pick(s.id, s.name) }, { toggleFav(s.id) }) { onNavigate("reviews/shop/${s.id}") }
+                    }
                 }
                 if (closedList.isNotEmpty()) {
                     item { Text("ร้านที่ปิดอยู่ตอนนี้", fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = N.Ink300, modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 18.dp, bottom = 9.dp)) }
                     items(closedList, key = { it.id }) { s ->
-                        Box(Modifier.padding(horizontal = 16.dp, vertical = 6.5.dp)) { ShopCard(s, false, s.id in favs, {}, { toggleFav(s.id) }) {} }
+                        Box(Modifier.padding(horizontal = 16.dp, vertical = 6.5.dp)) {
+                            if (ringMode) RingShopCard(s, false, false, s.id in favs, session, onToggle = {}, onFav = { toggleFav(s.id) }, onCart = {}, onCheckout = {}, onLogin = {})
+                            else ShopCard(s, false, s.id in favs, {}, { toggleFav(s.id) }) {}
+                        }
                     }
                 }
             }

@@ -29,7 +29,7 @@ fun SettingsScreen(session: Session, onBack: () -> Unit) {
             Text("รูปแบบการ์ดร้านค้า", fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, color = C.Text)
             Text("เลือกการแสดงรายการร้านในหน้าหลัก ร้านแนะนำยังเปิดหน้าเมนูเหมือนเดิม", fontSize = 12.sp, color = C.Subtext)
             StyleOption("การ์ดคลาสสิก", "แตะการ์ดร้านเพื่อเข้าหน้าเมนู (แบบเดิม)", style == "classic") { style = "classic"; session.cardStyle = "classic" }
-            StyleOption("การ์ดแบบใหม่", "การ์ดขยายได้ เลือกหัวข้อเมนูจากการ์ดโดยตรง (เร็วๆ นี้)", style == "ring") { style = "ring"; session.cardStyle = "ring" }
+            StyleOption("การ์ดแบบใหม่", "การ์ดขยายได้ เลือกเมนูจากวงแหวนในการ์ดโดยตรง", style == "ring") { style = "ring"; session.cardStyle = "ring" }
         }
     }
 }
