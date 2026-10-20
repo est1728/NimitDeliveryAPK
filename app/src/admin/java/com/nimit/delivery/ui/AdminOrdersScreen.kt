@@ -168,8 +168,10 @@ fun AdminOrdersPage(
                     val err: String? = store.error.value
                     val msg: String = when {
                         err != null -> "โหลดไม่ได้: " + err
-                        store.ready.value && scope.isEmpty() -> "ยังไม่มีร้านค้าในเขตนี้"
-                        else -> "ไม่มีออเดอร์"
+                        !store.ready.value -> "กำลังโหลดข้อมูลเขต..."
+                        scope.isEmpty() -> "[วินิจฉัย] ไม่พบร้านที่ franchiseIds มีรหัสเขต: " + store.zoneIds.value.joinToString(",") + " | ออเดอร์ที่ฟังได้ " + store.orders.value.size + " ใบ"
+                        all.isEmpty() && store.orders.value.isNotEmpty() -> "[วินิจฉัย] ออเดอร์ " + store.orders.value.size + " ใบ (shopId แรก: " + store.orders.value.first().s("shopId") + ") | ร้านในเขต " + scope.size + " ร้าน: " + scope.take(3).joinToString(",")
+                        else -> "[วินิจฉัย] ไม่มีออเดอร์ (ฟังได้ " + store.orders.value.size + " ใบ, ร้านในเขต " + scope.size + " ร้าน)"
                     }
                     Box(Modifier.fillMaxWidth().padding(top = 60.dp), contentAlignment = Alignment.Center) {
                         Text(msg, fontSize = 13.sp, color = C.Subtext)

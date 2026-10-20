@@ -47,6 +47,7 @@ class AdminOrdersStore(private val session: AdminSession) {
     val orders = mutableStateOf<List<AdminOrd>>(emptyList())
     val shopIds = mutableStateOf<Set<String>>(emptySet())
     val ready = mutableStateOf(false)
+    val zoneIds = mutableStateOf<List<String>>(emptyList())
     val error = mutableStateOf<String?>(null)
 
     private val db: FirebaseFirestore get() = FirebaseFirestore.getInstance()
@@ -63,6 +64,7 @@ class AdminOrdersStore(private val session: AdminSession) {
                 val ids = ArrayList<String>()
                 for (x in g.documents) ids.add(x.id)
                 if (!ids.contains(session.franchiseId)) ids.add(session.franchiseId)
+                zoneIds.value = ids.toList()
                 var idx = 0
                 for (chunk in ids.chunked(10)) {
                     val i = idx
