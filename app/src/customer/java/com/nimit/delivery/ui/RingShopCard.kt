@@ -94,22 +94,15 @@ private fun Modifier.cardGlow(radius: androidx.compose.ui.unit.Dp): Modifier = t
     }
 }
 
-/** ปุ่ม "ปิดเมนู": โผล่แบบ fade + เด้งขยาย (0.4→1, หน่วง .12s, เส้นโค้ง cubic-bezier(.34,1.3,.5,1)) กดแล้วหด .95 ตามต้นแบบ */
+/** ปุ่ม "ปิดเมนู": โผล่/หายแบบ fade + เด้งขยาย (0.4↔1, หน่วง .12s, cubic-bezier(.34,1.3,.5,1)) กดแล้วหด .95 ตามต้นแบบ */
 @Composable
-private fun CloseMenuButton(onClick: () -> Unit) {
-    val a = remember { Animatable(0f) }
-    val sc = remember { Animatable(0.4f) }
-    LaunchedEffect(Unit) {
-        delay(120)
-        launch { a.animateTo(1f, tween(500, easing = CubicBezierEasing(0.25f, 0.1f, 0.25f, 1f))) }
-        sc.animateTo(1f, tween(600, easing = CubicBezierEasing(0.34f, 1.3f, 0.5f, 1f)))
-    }
+private fun CloseMenuButton(a: Animatable<Float, androidx.compose.animation.core.AnimationVector1D>, sc: Animatable<Float, androidx.compose.animation.core.AnimationVector1D>, onClick: () -> Unit) {
     val src = remember { MutableInteractionSource() }
     val pressed by src.collectIsPressedAsState()
     val press by animateFloatAsState(if (pressed) 0.95f else 1f, tween(120), label = "press")
     val shape = RoundedCornerShape(12.dp)
     Row(
-        Modifier.padding(start = 8.dp)
+        Modifier
             .graphicsLayer { alpha = a.value; scaleX = sc.value * press; scaleY = sc.value * press }
             .shadow(6.dp, shape, ambientColor = N.B500.copy(alpha = 0.4f), spotColor = N.B500.copy(alpha = 0.4f))
             .clip(shape).background(Brush.linearGradient(listOf(N.B500, N.B700)))
@@ -142,6 +135,14 @@ fun RingShopCard(
     val sy = remember { Animatable(0.8f) }
     val sAlpha = remember { Animatable(0f) }
     val focus = remember { FocusRequester() }
+    val btnA = remember { Animatable(0f) }
+    val btnS = remember { Animatable(0.4f) }
+    LaunchedEffect(expanded) {
+        delay(120)
+        launch { btnA.animateTo(if (expanded) 1f else 0f, tween(500, easing = CubicBezierEasing(0.25f, 0.1f, 0.25f, 1f))) }
+        btnS.animateTo(if (expanded) 1f else 0.4f, tween(600, easing = CubicBezierEasing(0.34f, 1.3f, 0.5f, 1f)))
+    }
+    val favA by animateFloatAsState(if (expanded) 0f else 1f, tween(300), label = "fav")
 
     fun openSearch() {
         searchShown = true; searching = true
@@ -231,12 +232,11 @@ fun RingShopCard(
                     }
                 }
             }
-            if (expanded) {
-                CloseMenuButton(onToggle)
-            } else {
-                Box(Modifier.padding(start = 6.dp).size(30.dp).clip(CircleShape).background(N.B50).clickable { onFav() }, contentAlignment = Alignment.Center) {
+            Box(Modifier.padding(start = 8.dp), contentAlignment = Alignment.TopEnd) {
+                Box(Modifier.alpha(favA).size(30.dp).clip(CircleShape).background(N.B50).clickable(enabled = !expanded) { onFav() }, contentAlignment = Alignment.Center) {
                     PathIcon(P.HEART, if (fav) N.Red500 else Color(0xFFB6C2D6), 15.dp)
                 }
+                if (expanded || btnA.value > 0.01f) CloseMenuButton(btnA, btnS, onToggle)
             }
         }
 
