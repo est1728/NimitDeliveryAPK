@@ -26,6 +26,8 @@ class Session(ctx: Context) {
     var favoriteShops: String? get() = get("favoriteShops"); set(v) = set("favoriteShops", v)
     var notifLastRead: String? get() = get("notifLastRead"); set(v) = set("notifLastRead", v)
     var chatOrderId: String? get() = get("chatOrderId"); set(v) = set("chatOrderId", v)
+    /** รูปแบบการ์ดร้านในหน้าร้านทั้งหมด: "classic" (ค่าเริ่มต้น) หรือ "ring" (การ์ดแบบใหม่) */
+    var cardStyle: String get() = get("cardStyle") ?: "classic"; set(v) = set("cardStyle", v)
     var selectedShopId: String? get() = get("selectedShopId"); set(v) = set("selectedShopId", v)
     var selectedShopName: String? get() = get("selectedShopName"); set(v) = set("selectedShopName", v)
 

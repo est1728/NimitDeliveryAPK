@@ -63,6 +63,7 @@ fun NimitNav() {
                 onNewCustomer = { nav.navigate("register") }
             )
         }
+        composable("settings") { SettingsScreen(session) { nav.popBackStack() } }
         composable("terms") { LegalScreen("เงื่อนไขการใช้บริการ", CustomerLegal.VERSION, CustomerLegal.TERMS, "Terms of Service", CustomerLegal.TERMS_EN) { nav.popBackStack() } }
         composable("privacy") { LegalScreen("นโยบายข้อมูลส่วนบุคคล", CustomerLegal.VERSION, CustomerLegal.PRIVACY, "Privacy Policy", CustomerLegal.PRIVACY_EN) { nav.popBackStack() } }
         composable("otp") {

@@ -439,6 +439,7 @@ fun ShopsScreen(session: Session, onOpenShop: (String, String) -> Unit, onNaviga
                 }
                 SidebarNotifRow()
                 SbItem("แก้ไขที่อยู่", customer.optString("address").ifEmpty { "เพิ่มที่อยู่จัดส่ง" }) { sidebar = false; onNavigate("address") }
+                SbItem("ตั้งค่า", "รูปแบบการ์ดร้านค้า") { sidebar = false; onNavigate("settings") }
                 SbItem("สลับบัญชี", loginText) { sidebar = false; showAccounts = true }
                 SbItem("ออกจากระบบ", "เข้าสู่ระบบด้วยเบอร์อื่น") { sidebar = false; onLogout() }
             }
