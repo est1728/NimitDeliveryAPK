@@ -2,6 +2,7 @@ package com.nimit.delivery.data
 
 import androidx.compose.runtime.mutableStateOf
 import com.google.firebase.Timestamp
+import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
 import java.util.Date
@@ -41,19 +42,50 @@ class AdminOrd(val id: String, val d: Map<String, Any>) {
 
 /*
  * สถานะสดของหน้าออเดอร์: ฟังออเดอร์ที่ยังไม่จบ (เหมือน listenOrders ใน admin.html)
- * และฟังร้านที่อยู่ในเขตของแอดมิน (shops.franchiseIds) เพื่อกรองเฉพาะออเดอร์ของร้านในกลุ่มเขต
+ * และฟังร้านที่อยู่ในเขตของแอดมิน (shops.franchiseIds แบบใหม่ หรือ shops.franchiseId แบบเก่า เหมือนแอปผู้พัฒนา)
+ * เขตของแอดมิน = เขตตัวเอง + เขตอื่นที่ผูกหลังบ้านร่วม (backendGroupId เดียวกัน)
  */
 class AdminOrdersStore(private val session: AdminSession) {
     val orders = mutableStateOf<List<AdminOrd>>(emptyList())
     val shopIds = mutableStateOf<Set<String>>(emptySet())
+    val shopZones = mutableStateOf<Map<String, List<String>>>(emptyMap())
+    val zoneNames = mutableStateOf<Map<String, String>>(emptyMap())
     val ready = mutableStateOf(false)
     val zoneIds = mutableStateOf<List<String>>(emptyList())
     val error = mutableStateOf<String?>(null)
 
     private val db: FirebaseFirestore get() = FirebaseFirestore.getInstance()
     private val regs = ArrayList<ListenerRegistration>()
-    private val chunkShops = HashMap<Int, Set<String>>()
+    private val chunkShops = HashMap<Int, Map<String, List<String>>>()
     private var job: Job? = null
+
+    private fun zonesOf(d: DocumentSnapshot): List<String> {
+        val a = (d.get("franchiseIds") as? List<*>)?.mapNotNull { it as? String }
+        if (a != null && a.isNotEmpty()) return a
+        val s = d.getString("franchiseId")
+        return if (s != null) listOf(s) else emptyList()
+    }
+
+    private fun publish() {
+        val m = HashMap<String, List<String>>()
+        for (v in chunkShops.values) m.putAll(v)
+        shopZones.value = m
+        shopIds.value = m.keys.toSet()
+    }
+
+    /** ป้ายเขตข้างรหัสออเดอร์: แสดงเฉพาะเมื่อกลุ่มหลังบ้านมีหลายเขต; ร้านหลายเขตแสดงทุกชื่อ */
+    fun zoneLabel(shopId: String): String {
+        if (zoneIds.value.size <= 1) return ""
+        val zs = shopZones.value[shopId] ?: return ""
+        val names = ArrayList<String>()
+        for (z in zs) {
+            if (zoneIds.value.contains(z)) {
+                val n = zoneNames.value[z] ?: ""
+                if (n.isNotEmpty()) names.add(n)
+            }
+        }
+        return names.joinToString(" / ")
+    }
 
     fun start() {
         stop()
@@ -62,8 +94,16 @@ class AdminOrdersStore(private val session: AdminSession) {
                 // เขตทั้งหมดในกลุ่มหลังบ้านเดียวกัน (ไม่ผูก = มีแค่เขตตัวเอง)
                 val g = db.collection("franchises").whereEqualTo("backendGroupId", session.groupId).get().await()
                 val ids = ArrayList<String>()
-                for (x in g.documents) ids.add(x.id)
-                if (!ids.contains(session.franchiseId)) ids.add(session.franchiseId)
+                val names = HashMap<String, String>()
+                for (x in g.documents) {
+                    ids.add(x.id)
+                    names[x.id] = x.getString("name") ?: ""
+                }
+                if (!ids.contains(session.franchiseId)) {
+                    ids.add(session.franchiseId)
+                    names[session.franchiseId] = session.name
+                }
+                zoneNames.value = names
                 zoneIds.value = ids.toList()
                 var idx = 0
                 for (chunk in ids.chunked(10)) {
@@ -72,8 +112,8 @@ class AdminOrdersStore(private val session: AdminSession) {
                     regs.add(db.collection("shops").whereArrayContainsAny("franchiseIds", chunk).addSnapshotListener { snap, e ->
                         if (e != null) error.value = e.message
                         if (snap != null) {
-                            chunkShops[i] = snap.documents.map { it.id }.toSet()
-                            shopIds.value = chunkShops.values.flatten().toSet()
+                            chunkShops[i] = snap.documents.associate { it.id to zonesOf(it) }
+                            publish()
                         }
                     })
                 }
@@ -85,8 +125,8 @@ class AdminOrdersStore(private val session: AdminSession) {
                     regs.add(db.collection("shops").whereIn("franchiseId", chunk).addSnapshotListener { snap, e ->
                         if (e != null) error.value = e.message
                         if (snap != null) {
-                            chunkShops[j] = snap.documents.map { it.id }.toSet()
-                            shopIds.value = chunkShops.values.flatten().toSet()
+                            chunkShops[j] = snap.documents.associate { it.id to zonesOf(it) }
+                            publish()
                         }
                     })
                 }

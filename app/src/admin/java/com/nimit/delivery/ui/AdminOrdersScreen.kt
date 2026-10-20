@@ -169,16 +169,15 @@ fun AdminOrdersPage(
                     val msg: String = when {
                         err != null -> "โหลดไม่ได้: " + err
                         !store.ready.value -> "กำลังโหลดข้อมูลเขต..."
-                        scope.isEmpty() -> "[วินิจฉัย] ไม่พบร้านที่ franchiseIds มีรหัสเขต: " + store.zoneIds.value.joinToString(",") + " | ออเดอร์ที่ฟังได้ " + store.orders.value.size + " ใบ"
-                        all.isEmpty() && store.orders.value.isNotEmpty() -> "[วินิจฉัย] ออเดอร์ " + store.orders.value.size + " ใบ (shopId แรก: " + store.orders.value.first().s("shopId") + ") | ร้านในเขต " + scope.size + " ร้าน: " + scope.take(3).joinToString(",")
-                        else -> "[วินิจฉัย] ไม่มีออเดอร์ (ฟังได้ " + store.orders.value.size + " ใบ, ร้านในเขต " + scope.size + " ร้าน)"
+                        scope.isEmpty() -> "ยังไม่มีร้านค้าในเขตนี้"
+                        else -> "ไม่มีออเดอร์"
                     }
                     Box(Modifier.fillMaxWidth().padding(top = 60.dp), contentAlignment = Alignment.Center) {
                         Text(msg, fontSize = 13.sp, color = C.Subtext)
                     }
                 }
             }
-            items(list, key = { it.id }) { o -> AdminOrderCard(o) { onOpen(o.id) } }
+            items(list, key = { it.id }) { o -> AdminOrderCard(o, store.zoneLabel(o.s("shopId"))) { onOpen(o.id) } }
         }
     }
 }
@@ -198,7 +197,7 @@ private fun AdminDot(on: Boolean) {
 
 // การ์ดออเดอร์ ตาม .ocard ของ admin.html
 @Composable
-private fun AdminOrderCard(o: AdminOrd, onClick: () -> Unit) {
+private fun AdminOrderCard(o: AdminOrd, zone: String, onClick: () -> Unit) {
     val st = o.status
     val pill = adminPill(st)
     val viewing: Boolean = o.date("riderViewingAt")?.let { System.currentTimeMillis() - it.time < 20000L } ?: false
@@ -211,7 +210,15 @@ private fun AdminOrderCard(o: AdminOrd, onClick: () -> Unit) {
             Modifier.fillMaxWidth().padding(start = 14.dp, end = 14.dp, top = 12.dp, bottom = 10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("#" + o.orderId, fontSize = 18.sp, fontWeight = FontWeight.Black, color = C.Primary, letterSpacing = 1.sp, modifier = Modifier.weight(1f))
+            Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                Text("#" + o.orderId, fontSize = 18.sp, fontWeight = FontWeight.Black, color = C.Primary, letterSpacing = 1.sp)
+                if (zone.isNotEmpty()) {
+                    Spacer(Modifier.width(8.dp))
+                    Box(Modifier.clip(RoundedCornerShape(20.dp)).background(Color(0xFFF1F5F9)).padding(horizontal = 8.dp, vertical = 2.dp)) {
+                        Text(zone, fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = C.Subtext, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                }
+            }
             if (hasRider) {
                 AdminDot(o.date("riderReadAt") != null)
                 Spacer(Modifier.width(5.dp))
