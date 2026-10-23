@@ -1,8 +1,15 @@
 package com.nimit.delivery.ui
 
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -12,44 +19,166 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.nimit.delivery.data.Session
+import kotlin.math.PI
+import kotlin.math.abs
+import kotlin.math.min
+import kotlin.math.sin
 
-/** หน้าตั้งค่า (ลูกค้า): เลือกรูปแบบการ์ดร้านค้า — คลาสสิกเป็นค่าเริ่มต้น */
+/** หน้าตั้งค่า (ลูกค้า): เลือกรูปแบบการ์ดร้านค้า — มีภาพตัวอย่างเคลื่อนไหวของแต่ละแบบ (ค่าเริ่มต้น = แบบใหม่) */
 @Composable
 fun SettingsScreen(session: Session, onBack: () -> Unit) {
     var style by remember { mutableStateOf(session.cardStyle) }
     Column(Modifier.fillMaxSize().background(C.Gray)) {
         TopBar("ตั้งค่า", onBack)
-        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("รูปแบบการ์ดร้านค้า", fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, color = C.Text)
             Text("เลือกการแสดงรายการร้านในหน้าหลัก ร้านแนะนำยังเปิดหน้าเมนูเหมือนเดิม", fontSize = 12.sp, color = C.Subtext)
-            StyleOption("การ์ดคลาสสิก", "แตะการ์ดร้านเพื่อเข้าหน้าเมนู (แบบเดิม)", style == "classic") { style = "classic"; session.cardStyle = "classic" }
-            StyleOption("การ์ดแบบใหม่", "การ์ดขยายได้ เลือกเมนูจากวงแหวนในการ์ดโดยตรง", style == "ring") { style = "ring"; session.cardStyle = "ring" }
+            Row(Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                StyleTile("คลาสสิก", style == "classic", Modifier.weight(1f)) { style = "classic"; session.cardStyle = "classic" }
+                StyleTile("แบบใหม่", style == "ring", Modifier.weight(1f)) { style = "ring"; session.cardStyle = "ring" }
+            }
+            Text(
+                if (style == "ring") "แบบใหม่: แตะการ์ดร้านเพื่อขยาย เลือกเมนูจากวงแหวนในการ์ดได้เลย" else "คลาสสิก: แตะการ์ดร้านเพื่อเข้าหน้าเมนู (แบบเดิม)",
+                fontSize = 12.sp, color = C.Subtext, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(top = 4.dp)
+            )
         }
     }
 }
 
 @Composable
-private fun StyleOption(title: String, sub: String, selected: Boolean, onClick: () -> Unit) {
-    val shape = RoundedCornerShape(16.dp)
-    Row(
-        Modifier.fillMaxWidth().clip(shape).background(Color.White)
-            .border(if (selected) 2.dp else 1.dp, if (selected) C.Primary else Color(0xFFE2E8F0), shape)
-            .clickable { onClick() }.padding(16.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Column(Modifier.weight(1f)) {
-            Text(title, fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, color = C.Text)
-            Text(sub, fontSize = 12.sp, color = C.Subtext, modifier = Modifier.padding(top = 2.dp))
-        }
+private fun StyleTile(label: String, selected: Boolean, modifier: Modifier, onClick: () -> Unit) {
+    Column(modifier.clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onClick() }, horizontalAlignment = Alignment.CenterHorizontally) {
+        val outer = RoundedCornerShape(22.dp)
         Box(
-            Modifier.size(22.dp).clip(CircleShape).border(2.dp, if (selected) C.Primary else Color(0xFFCBD5E1), CircleShape),
-            contentAlignment = Alignment.Center
-        ) { if (selected) Box(Modifier.size(12.dp).clip(CircleShape).background(C.Primary)) }
+            Modifier.width(132.dp).height(224.dp).clip(outer).border(if (selected) 3.dp else 1.dp, if (selected) N.B500 else Color(0xFFD5DEEE), outer).padding(4.dp)
+        ) {
+            val inner = RoundedCornerShape(18.dp)
+            Box(Modifier.fillMaxSize().clip(inner).background(Color.White)) {
+                if (label == "คลาสสิก") ClassicPreview() else RingPreview()
+            }
+        }
+        Text(label, fontSize = 14.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium, color = if (selected) N.B500 else C.Text, modifier = Modifier.padding(top = 10.dp))
     }
 }
+
+private val PV_GREY = Color(0xFFE3E8F2)
+private val PV_BANNER = Color(0xFFDCE8FB)
+
+@Composable
+private fun PvHeader() {
+    Box(Modifier.fillMaxWidth().height(22.dp).background(Brush.linearGradient(listOf(N.B800, N.B700)))) {
+        Box(Modifier.align(Alignment.CenterStart).padding(start = 8.dp).size(10.dp).clip(RoundedCornerShape(3.dp)).background(Color.White.copy(alpha = 0.8f)))
+        Box(Modifier.align(Alignment.CenterEnd).padding(end = 8.dp).width(46.dp).height(8.dp).clip(RoundedCornerShape(4.dp)).background(Color.White.copy(alpha = 0.35f)))
+    }
+}
+
+/** ตัวอย่างแบบคลาสสิก: รายการการ์ดร้าน (แบนเนอร์ + โลโก้ + ข้อความ) เลื่อนขึ้นช้าๆ */
+@Composable
+private fun ClassicPreview() {
+    val tr = rememberInfiniteTransition(label = "classic")
+    val t by tr.animateFloat(0f, 1f, infiniteRepeatable(tween(4200, easing = LinearEasing), RepeatMode.Restart), label = "cl")
+    Column(Modifier.fillMaxSize()) {
+        PvHeader()
+        Box(Modifier.fillMaxSize().clip(RoundedCornerShape(0.dp))) {
+            val cardH = 62f; val gap = 8f
+            Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp).graphicsLayer { translationY = -t * (cardH + gap) * density; clip = false }, verticalArrangement = Arrangement.spacedBy(gap.dp)) {
+                Spacer(Modifier.height(2.dp))
+                for (i in 0 until 5) MiniClassicCard(cardH, i)
+            }
+        }
+    }
+}
+
+@Composable
+private fun MiniClassicCard(h: Float, i: Int) {
+    val shape = RoundedCornerShape(9.dp)
+    Column(Modifier.fillMaxWidth().height(h.dp).clip(shape).background(Color(0xFFF4F8FE)).border(1.dp, Color(0xFFE2E8F2), shape)) {
+        Box(Modifier.fillMaxWidth().height(26.dp).background(if (i % 2 == 0) PV_BANNER else Color(0xFFE6EEF9))) {
+            Box(Modifier.align(Alignment.TopEnd).padding(4.dp).clip(RoundedCornerShape(4.dp)).background(Color(0xFFDCFCE7)).padding(horizontal = 4.dp, vertical = 1.dp)) {
+                Box(Modifier.size(width = 10.dp, height = 3.dp).background(Color(0xFF16A34A)))
+            }
+        }
+        Row(Modifier.padding(horizontal = 6.dp), verticalAlignment = Alignment.Top) {
+            Box(Modifier.offset(y = (-9).dp).size(20.dp).clip(RoundedCornerShape(6.dp)).background(Color.White).border(1.5.dp, Color.White, RoundedCornerShape(6.dp))) {
+                Box(Modifier.fillMaxSize().padding(3.dp).clip(RoundedCornerShape(4.dp)).background(N.B500.copy(alpha = 0.55f)))
+            }
+            Column(Modifier.padding(start = 6.dp, top = 3.dp)) {
+                Box(Modifier.width(if (i % 2 == 0) 52.dp else 44.dp).height(5.dp).clip(RoundedCornerShape(3.dp)).background(Color(0xFF9AA2B8)))
+                Box(Modifier.padding(top = 3.dp).width(36.dp).height(4.dp).clip(RoundedCornerShape(3.dp)).background(PV_GREY))
+            }
+        }
+    }
+}
+
+private fun seg(t: Float, a: Float, b: Float) = ((t - a) / (b - a)).coerceIn(0f, 1f)
+private fun smooth(x: Float) = x * x * (3 - 2 * x)
+
+/** ตัวอย่างแบบใหม่: การ์ดแถวเตี้ย → ขยายในที่ → วงแหวนเมนูไหลซ้าย-ขวา → หุบกลับ วนซ้ำ */
+@Composable
+private fun RingPreview() {
+    val tr = rememberInfiniteTransition(label = "ring")
+    val t by tr.animateFloat(0f, 1f, infiniteRepeatable(tween(6000, easing = LinearEasing), RepeatMode.Restart), label = "rg")
+    val expand = smooth(seg(t, 0.15f, 0.32f)) - smooth(seg(t, 0.86f, 0.98f))
+    val pos = if (t in 0.34f..0.84f) sin(seg(t, 0.34f, 0.84f) * 2f * PI.toFloat()) * 1.0f else 0f
+    val shape = RoundedCornerShape(10.dp)
+    Column(Modifier.fillMaxSize()) {
+        PvHeader()
+        Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(Modifier.fillMaxWidth().clip(shape).border(1.5.dp, N.B500, shape).background(Color.White).padding(6.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.size((26 - 6 * expand).dp).clip(RoundedCornerShape(7.dp)).background(Brush.linearGradient(listOf(N.B500, N.B800))))
+                    Column(Modifier.padding(start = 6.dp).weight(1f)) {
+                        Box(Modifier.width(40.dp).height(5.dp).clip(RoundedCornerShape(3.dp)).background(Color(0xFF6B7A99)))
+                        if (expand < 0.5f) Box(Modifier.alpha(1f - expand * 2f).padding(top = 3.dp).width(54.dp).height(4.dp).clip(RoundedCornerShape(3.dp)).background(PV_GREY))
+                    }
+                    if (expand > 0.3f) Box(Modifier.alpha(min(1f, (expand - 0.3f) * 3f)).clip(RoundedCornerShape(5.dp)).background(N.B500).padding(horizontal = 6.dp, vertical = 3.dp)) {
+                        Box(Modifier.size(width = 14.dp, height = 3.dp).background(Color.White.copy(alpha = 0.9f)))
+                    }
+                }
+                if (expand > 0.02f) {
+                    Row(Modifier.padding(top = 5.dp).alpha(expand), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                        for (k in 0 until 3) Box(Modifier.width(if (k == 0) 20.dp else 28.dp).height(8.dp).clip(RoundedCornerShape(4.dp)).background(if (k == 0) N.B600 else PV_GREY))
+                    }
+                    Box(Modifier.fillMaxWidth().height((74 * expand).dp).padding(top = 6.dp).clip(RoundedCornerShape(0.dp)).alpha(expand)) {
+                        for (j in -2..2) {
+                            val d = j - pos
+                            val ad = abs(d)
+                            val sc = 1f - 0.2f * min(1f, ad)
+                            Box(
+                                Modifier.align(Alignment.TopCenter).size(width = 34.dp, height = 56.dp)
+                                    .graphicsLayer { translationX = d * 38f * density; scaleX = sc * (1f - 0.1f * min(1f, ad)); scaleY = sc; alpha = (1.15f - 0.5f * min(2f, ad)).coerceIn(0f, 1f) }
+                                    .clip(RoundedCornerShape(7.dp)).border(1.dp, if (ad < 0.5f) N.B700 else N.B500, RoundedCornerShape(7.dp)).background(Color.White).padding(3.dp)
+                            ) {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Box(Modifier.fillMaxWidth().height(28.dp).clip(RoundedCornerShape(5.dp)).background(RING_PV[(j + 5) % RING_PV.size]))
+                                    Box(Modifier.padding(top = 4.dp).width(20.dp).height(3.dp).clip(RoundedCornerShape(2.dp)).background(Color(0xFF9AA2B8)))
+                                    Box(Modifier.padding(top = 3.dp).width(14.dp).height(3.dp).clip(RoundedCornerShape(2.dp)).background(N.B600))
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            // การ์ดถัดไป (ถูกดันลงตอนขยาย)
+            Row(Modifier.fillMaxWidth().clip(shape).border(1.5.dp, N.B500.copy(alpha = 0.6f), shape).padding(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.size(26.dp).clip(RoundedCornerShape(7.dp)).background(Color(0xFFB9CDEE)))
+                Column(Modifier.padding(start = 6.dp)) {
+                    Box(Modifier.width(36.dp).height(5.dp).clip(RoundedCornerShape(3.dp)).background(Color(0xFF9AA2B8)))
+                    Box(Modifier.padding(top = 3.dp).width(50.dp).height(4.dp).clip(RoundedCornerShape(3.dp)).background(PV_GREY))
+                }
+            }
+        }
+    }
+}
+
+private val RING_PV = listOf(Color(0xFFF3D5D5), Color(0xFFF5E3C8), Color(0xFFE6EBC9), Color(0xFFCFE8DC), Color(0xFFD4DFF5), Color(0xFFE5D2EE))
