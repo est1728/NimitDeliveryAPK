@@ -379,7 +379,9 @@ private fun RingCarousel(
                             rotationY = d * RING_STEP * s
                             cameraDistance = 12f * density
                             val sc = (1f + 0.03f * max(0f, (c - 0.87f) / 0.13f) - 0.06f * min(1f, max(0f, (0.87f - c) / 0.37f))) * persp
-                            scaleX = sc; scaleY = sc
+                            // การ์ดข้างแคบลงอีก ~9% ให้มีช่องไฟระหว่างใบเหมือนต้นแบบ (ไม่ชิด/ทับกัน)
+                            val narrow = 1f - 0.092f * min(1f, max(0f, (1f - c) / 0.134f))
+                            scaleX = sc * narrow; scaleY = sc
                         }
                         .clip(RoundedCornerShape(16.dp)).background(Color.White)
                         .border(2.dp, if (front) N.B700 else N.B500, RoundedCornerShape(16.dp))
