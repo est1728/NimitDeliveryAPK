@@ -30,13 +30,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Paint
-import androidx.compose.ui.graphics.asFrameworkPaint
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.draw.drawBehind
@@ -84,13 +84,12 @@ private fun Modifier.cardGlow(radius: androidx.compose.ui.unit.Dp): Modifier = t
     val r = radius.toPx(); val sp = 3.dp.toPx()
     drawRoundRect(Color(0x1F2E6FE0), Offset(-sp, -sp), Size(size.width + 2 * sp, size.height + 2 * sp), CornerRadius(r + sp))
     drawIntoCanvas { c ->
-        val paint = Paint()
-        val fp = paint.asFrameworkPaint()
+        val fp = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
         fp.color = android.graphics.Color.WHITE
         fp.setShadowLayer(12.dp.toPx(), 0f, 0f, Color(0x592E6FE0).toArgb())
-        c.drawRoundRect(0f, 0f, size.width, size.height, r, r, paint)
+        c.nativeCanvas.drawRoundRect(android.graphics.RectF(0f, 0f, size.width, size.height), r, r, fp)
         fp.setShadowLayer(18.dp.toPx(), 0f, 6.dp.toPx(), Color(0x1F0B2C63).toArgb())
-        c.drawRoundRect(0f, 0f, size.width, size.height, r, r, paint)
+        c.nativeCanvas.drawRoundRect(android.graphics.RectF(0f, 0f, size.width, size.height), r, r, fp)
     }
 }
 
@@ -277,7 +276,7 @@ fun RingShopCard(
             }
 
             // วงแหวนเมนู
-            Box(Modifier.fillMaxWidth().height(188.dp).padding(top = 6.dp), contentAlignment = Alignment.Center) {
+            Box(Modifier.fillMaxWidth().height(188.dp).padding(horizontal = 6.dp).clipToBounds().padding(top = 6.dp), contentAlignment = Alignment.Center) {
                 val list = menus
                 when {
                     failed -> Text("โหลดเมนูไม่ได้ ลองใหม่อีกครั้ง", fontSize = 13.sp, color = Color(0xFF94A3B8))
