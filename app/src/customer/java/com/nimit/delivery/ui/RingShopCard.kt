@@ -3,6 +3,7 @@ package com.nimit.delivery.ui
 import android.widget.Toast
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.Easing
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.animateFloatAsState
@@ -42,6 +43,11 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.Matrix
+import androidx.compose.ui.graphics.drawscope.withTransform
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -76,23 +82,41 @@ import kotlin.math.sin
 private const val RING_STEP = 30f
 private const val RING_RAD = 240f
 private const val RING_PX = 64f
-private fun ringCard(k: Float): FloatArray {
-    val c = if (k > 6f) -1f else cos(Math.toRadians((k * RING_STEP).toDouble())).toFloat()
-    val persp = 700f / (700f - (c - 1f) * RING_RAD)
-    val sc = (1f + 0.03f * max(0f, (c - 0.87f) / 0.13f) - 0.06f * min(1f, max(0f, (0.87f - c) / 0.37f))) * persp
-    val narrow = 1f - 0.092f * min(1f, max(0f, (1f - c) / 0.134f))
-    return floatArrayOf(sc, narrow, 60f * max(c, 0.12f) * sc * narrow)
+/** ค่าตามสูตร CSS ต้นฉบับ: perspective(700px) translate3d(sin*RAD, -(1-sp)*50, (c-1)*RAD) rotateY(deg) scale(sc) */
+private fun ringScale(c: Float): Float = 1f + 0.03f * max(0f, (c - 0.87f) / 0.13f) - 0.06f * min(1f, max(0f, (0.87f - c) / 0.37f))
+private fun ringCos(d: Float): Float = if (abs(d) > 6f) -1f else cos(Math.toRadians((d * RING_STEP).toDouble())).toFloat()
+
+/** ขอบซ้าย/ขวาของการ์ดที่ตำแหน่ง d หลังฉายภาพ (หน่วย dp จากกึ่งกลางวง) ใช้หาว่าแตะโดนใบไหน */
+private fun ringExtent(d: Float): FloatArray {
+    val a = Math.toRadians((d * RING_STEP).toDouble()); val c = ringCos(d); val sc = ringScale(c)
+    val tx = sin(a).toFloat() * RING_RAD; val tz = (c - 1f) * RING_RAD
+    var lo = Float.MAX_VALUE; var hi = -Float.MAX_VALUE
+    for (sx in floatArrayOf(-60f, 60f)) {
+        val x = sx * sc
+        val xx = x * cos(a).toFloat() + tx; val zz = -x * sin(a).toFloat() + tz
+        val v = xx * 700f / (700f - zz)
+        lo = min(lo, v); hi = max(hi, v)
+    }
+    return floatArrayOf(lo, hi)
 }
-// ตำแหน่งแนวนอนของการ์ดที่มุม |d| ช่อง: เรียงต่อกันตามความกว้างจริงของแต่ละใบ เว้นช่องไฟ ไม่ให้ทับกัน
-private val RING_XS: FloatArray by lazy {
-    val x = FloatArray(9)
-    for (k in 1..8) x[k] = x[k - 1] + ringCard((k - 1).toFloat())[2] + ringCard(k.toFloat())[2] + 9f
-    x
+
+/** เมทริกซ์ฉายภาพเหมือน CSS (หน่วยพิกเซล) รอบกึ่งกลางการ์ด */
+private fun ringMatrix(d: Float, s: Float, density: Float): Matrix {
+    val a = Math.toRadians((d * RING_STEP * s).toDouble()); val th = Math.toRadians((d * RING_STEP).toDouble())
+    val c = ringCos(d); val sc = ringScale(c)
+    val tx = sin(th).toFloat() * RING_RAD * s * density
+    val ty = -(1f - s) * 50f * density
+    val tz = (c - 1f) * RING_RAD * s * density
+    val cs = cos(a).toFloat(); val sn = sin(a).toFloat()
+    val per = 700f * density
+    val v = FloatArray(16)
+    v[0] = sc * cs; v[3] = sc * sn / per
+    v[5] = sc
+    v[10] = 1f
+    v[12] = tx; v[13] = ty; v[15] = 1f - tz / per
+    return Matrix(v)
 }
-private fun ringX(a: Float): Float {
-    val k = min(7, a.toInt()); val f = min(1f, a - k)
-    return RING_XS[k] + (RING_XS[k + 1] - RING_XS[k]) * f
-}
+private val RING_BACK = Easing { k -> val q = k - 1f; 1f + 2.1f * q * q * q + 1.1f * q * q }
 private val RING_PAL = listOf(0xFFB45309, 0xFFCA8A04, 0xFFC2410C, 0xFF15803D, 0xFFB91C1C, 0xFFDC2626, 0xFFEA580C, 0xFF9F1239, 0xFF0EA5E9, 0xFF7C2D12, 0xFFA16207, 0xFFBE185D)
 private val RING_SUB = Color(0xFF64748B)
 
@@ -364,14 +388,34 @@ private fun RingCarousel(
     val center by remember(resetKey) { derivedStateOf { Math.round(pos.value) } }
 
     Box(
-        Modifier.fillMaxWidth().height(180.dp).draggable(
+        Modifier.fillMaxWidth().height(180.dp)
+            .pointerInput(items) {
+                detectTapGestures { off ->
+                    if (sp.value < 0.5f) return@detectTapGestures
+                    val x = (off.x - size.width / 2f) / density
+                    var bestJ = Int.MIN_VALUE; var bestD = Float.MAX_VALUE
+                    for (j in center - 4..center + 4) {
+                        val d = j - pos.value
+                        if (ringCos(d) <= 0.4f) continue
+                        val ex = ringExtent(d)
+                        if (x >= ex[0] && x <= ex[1] && abs(d) < bestD) { bestD = abs(d); bestJ = j }
+                    }
+                    if (bestJ == Int.MIN_VALUE) return@detectTapGestures
+                    val (mid, m) = items[Math.floorMod(bestJ, b)]
+                    if (bestD < 0.5f) {
+                        val sold = m["available"] == false || !isMenuWithinSchedule(m)
+                        if (sold) onSoldOut() else onPick(mid to m)
+                    } else scope.launch { pos.animateTo(bestJ.toFloat(), tween(520, easing = RING_BACK)) }
+                }
+            }
+            .draggable(
             orientation = Orientation.Horizontal,
             state = rememberDraggableState { delta -> scope.launch { pos.snapTo(pos.value - delta / (RING_PX * density)) } },
             onDragStarted = { scope.launch { pos.stop() } },
             onDragStopped = { vel ->
                 val v = (vel / density / 1000f).coerceIn(-1.5f, 1.5f)
                 val target = Math.round(pos.value + (-v * 140f / RING_PX).coerceIn(-3f, 3f)).toFloat()
-                scope.launch { pos.animateTo(target, spring(dampingRatio = 0.6f, stiffness = 120f)) }
+                scope.launch { pos.animateTo(target, tween(520, easing = RING_BACK)) }
             }
         )
     ) {
@@ -380,34 +424,21 @@ private fun RingCarousel(
                 val idx = Math.floorMod(j, b)
                 val (mid, m) = items[idx]
                 val sold = m["available"] == false || !isMenuWithinSchedule(m)
-                val front by remember { derivedStateOf { abs(j - pos.value) < 0.5f } }
+                val front by remember { derivedStateOf { ringCos(j - pos.value) > 0.9f } }
                 Box(
                     Modifier.align(Alignment.TopCenter).padding(top = 6.dp).size(width = 120.dp, height = 158.dp)
-                        .zIndex(30f - abs(j - center))
+                        .zIndex(30f - min(25f, abs(j - center).toFloat()))
                         .graphicsLayer {
                             val d = j - pos.value
-                            val th = Math.toRadians((d * RING_STEP).toDouble())
-                            val c = if (abs(d) > 6f) -1f else cos(th).toFloat()
-                            val s = sp.value
-                            alpha = s * ((c - 0.1f) / 0.35f).coerceIn(0f, 1f)
-                            val persp = 700f / (700f - (c - 1f) * RING_RAD * s)
-                            translationX = ringX(abs(d)) * (if (d < 0) -1f else 1f) * s * density
-                            translationY = -(1f - s) * 50f * density
-                            rotationY = d * RING_STEP * s
-                            cameraDistance = 12f * density
-                            val sc = (1f + 0.03f * max(0f, (c - 0.87f) / 0.13f) - 0.06f * min(1f, max(0f, (0.87f - c) / 0.37f))) * persp
-                            // การ์ดข้างแคบลงอีก ~9% ให้มีช่องไฟระหว่างใบเหมือนต้นแบบ (ไม่ชิด/ทับกัน)
-                            val narrow = 1f - 0.092f * min(1f, max(0f, (1f - c) / 0.134f))
-                            scaleX = sc * narrow; scaleY = sc
+                            alpha = sp.value * ((ringCos(d) - 0.1f) / 0.35f).coerceIn(0f, 1f)
+                        }
+                        .drawWithContent {
+                            val m4 = ringMatrix(j - pos.value, sp.value, density)
+                            val cx = size.width / 2f; val cy = size.height / 2f
+                            withTransform({ translate(cx, cy); transform(m4); translate(-cx, -cy) }) { this@drawWithContent.drawContent() }
                         }
                         .clip(RoundedCornerShape(16.dp)).background(Color.White)
                         .border(2.dp, if (front) N.B700 else N.B500, RoundedCornerShape(16.dp))
-                        .clickable {
-                            val d = j - pos.value
-                            if (abs(d) > 2.5f) return@clickable
-                            if (abs(d) < 0.5f) { if (sold) onSoldOut() else onPick(mid to m) }
-                            else scope.launch { pos.animateTo(j.toFloat(), spring(dampingRatio = 0.6f, stiffness = 120f)) }
-                        }
                 ) {
                     Column(Modifier.fillMaxSize().padding(8.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.SpaceBetween) {
                         Box(
