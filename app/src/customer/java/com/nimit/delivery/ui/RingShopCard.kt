@@ -76,6 +76,23 @@ import kotlin.math.sin
 private const val RING_STEP = 30f
 private const val RING_RAD = 240f
 private const val RING_PX = 64f
+private fun ringCard(k: Float): FloatArray {
+    val c = if (k > 6f) -1f else cos(Math.toRadians((k * RING_STEP).toDouble())).toFloat()
+    val persp = 700f / (700f - (c - 1f) * RING_RAD)
+    val sc = (1f + 0.03f * max(0f, (c - 0.87f) / 0.13f) - 0.06f * min(1f, max(0f, (0.87f - c) / 0.37f))) * persp
+    val narrow = 1f - 0.092f * min(1f, max(0f, (1f - c) / 0.134f))
+    return floatArrayOf(sc, narrow, 60f * max(c, 0.12f) * sc * narrow)
+}
+// ตำแหน่งแนวนอนของการ์ดที่มุม |d| ช่อง: เรียงต่อกันตามความกว้างจริงของแต่ละใบ เว้นช่องไฟ ไม่ให้ทับกัน
+private val RING_XS: FloatArray by lazy {
+    val x = FloatArray(9)
+    for (k in 1..8) x[k] = x[k - 1] + ringCard((k - 1).toFloat())[2] + ringCard(k.toFloat())[2] + 9f
+    x
+}
+private fun ringX(a: Float): Float {
+    val k = min(7, a.toInt()); val f = min(1f, a - k)
+    return RING_XS[k] + (RING_XS[k + 1] - RING_XS[k]) * f
+}
 private val RING_PAL = listOf(0xFFB45309, 0xFFCA8A04, 0xFFC2410C, 0xFF15803D, 0xFFB91C1C, 0xFFDC2626, 0xFFEA580C, 0xFF9F1239, 0xFF0EA5E9, 0xFF7C2D12, 0xFFA16207, 0xFFBE185D)
 private val RING_SUB = Color(0xFF64748B)
 
@@ -374,7 +391,7 @@ private fun RingCarousel(
                             val s = sp.value
                             alpha = s * ((c - 0.1f) / 0.35f).coerceIn(0f, 1f)
                             val persp = 700f / (700f - (c - 1f) * RING_RAD * s)
-                            translationX = sin(th).toFloat() * RING_RAD * s * persp * density
+                            translationX = ringX(abs(d)) * (if (d < 0) -1f else 1f) * s * density
                             translationY = -(1f - s) * 50f * density
                             rotationY = d * RING_STEP * s
                             cameraDistance = 12f * density

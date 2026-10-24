@@ -21,6 +21,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.zIndex
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -82,27 +85,67 @@ private fun PvHeader() {
     }
 }
 
-/** ตัวอย่างแบบคลาสสิก: รายการการ์ดร้าน (แบนเนอร์ + โลโก้ + ข้อความ) เลื่อนขึ้นช้าๆ */
+/** ตัวอย่างแบบคลาสสิก: รายการการ์ดร้าน → แตะการ์ด → เด้งเข้าหน้าเมนู → เมนูเลื่อนลง → กลับ (วนซ้ำ) */
 @Composable
 private fun ClassicPreview() {
     val tr = rememberInfiniteTransition(label = "classic")
-    val t by tr.animateFloat(0f, 1f, infiniteRepeatable(tween(4200, easing = LinearEasing), RepeatMode.Restart), label = "cl")
+    val t by tr.animateFloat(0f, 1f, infiniteRepeatable(tween(9000, easing = LinearEasing), RepeatMode.Restart), label = "cl")
+    val listScroll = smooth(seg(t, 0.02f, 0.22f)) - smooth(seg(t, 0.92f, 0.99f))
+    val press = smooth(seg(t, 0.26f, 0.31f)) - smooth(seg(t, 0.35f, 0.39f))
+    val open = smooth(seg(t, 0.37f, 0.50f)) - smooth(seg(t, 0.90f, 0.98f))
+    val menuScroll = smooth(seg(t, 0.55f, 0.88f))
+    Box(Modifier.fillMaxSize()) {
+        Column(Modifier.fillMaxSize()) {
+            PvHeader()
+            Box(Modifier.fillMaxSize().clipToBounds()) {
+                val cardH = 62f; val gap = 8f
+                Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp).graphicsLayer { translationY = -listScroll * 30f * density }, verticalArrangement = Arrangement.spacedBy(gap.dp)) {
+                    Spacer(Modifier.height(2.dp))
+                    for (i in 0 until 5) MiniClassicCard(cardH, i, if (i == 1) press else 0f)
+                }
+            }
+        }
+        if (open > 0.01f) {
+            Box(Modifier.fillMaxSize().graphicsLayer {
+                transformOrigin = TransformOrigin(0.5f, 0.44f)
+                val sc = 0.5f + 0.5f * open
+                scaleX = sc; scaleY = sc; alpha = open
+            }.background(Color.White)) { MiniMenuPage(menuScroll) }
+        }
+    }
+}
+
+/** หน้าเมนูจำลอง: แถบหัว + แบนเนอร์ร้าน + รายการเมนูที่เลื่อนขึ้น */
+@Composable
+private fun MiniMenuPage(scroll: Float) {
     Column(Modifier.fillMaxSize()) {
-        PvHeader()
-        Box(Modifier.fillMaxSize().clip(RoundedCornerShape(0.dp))) {
-            val cardH = 62f; val gap = 8f
-            Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp).graphicsLayer { translationY = -t * (cardH + gap) * density; clip = false }, verticalArrangement = Arrangement.spacedBy(gap.dp)) {
-                Spacer(Modifier.height(2.dp))
-                for (i in 0 until 5) MiniClassicCard(cardH, i)
+        Box(Modifier.fillMaxWidth().height(22.dp).background(Brush.linearGradient(listOf(N.B800, N.B700)))) {
+            Box(Modifier.align(Alignment.CenterStart).padding(start = 8.dp).size(9.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.85f)))
+            Box(Modifier.align(Alignment.Center).width(40.dp).height(6.dp).clip(RoundedCornerShape(3.dp)).background(Color.White.copy(alpha = 0.6f)))
+        }
+        Box(Modifier.fillMaxWidth().height(36.dp).background(PV_BANNER))
+        Box(Modifier.fillMaxSize().clipToBounds()) {
+            Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp).graphicsLayer { translationY = -scroll * 120f * density }, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                for (i in 0 until 9) {
+                    val sh = RoundedCornerShape(8.dp)
+                    Row(Modifier.fillMaxWidth().height(32.dp).clip(sh).border(1.dp, Color(0xFFE2E8F2), sh).background(Color.White).padding(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.size(24.dp).clip(RoundedCornerShape(6.dp)).background(RING_PV[i % RING_PV.size]))
+                        Column(Modifier.padding(start = 6.dp).weight(1f)) {
+                            Box(Modifier.width(if (i % 2 == 0) 44.dp else 36.dp).height(4.dp).clip(RoundedCornerShape(2.dp)).background(Color(0xFF9AA2B8)))
+                            Box(Modifier.padding(top = 3.dp).width(24.dp).height(3.dp).clip(RoundedCornerShape(2.dp)).background(PV_GREY))
+                        }
+                        Box(Modifier.clip(RoundedCornerShape(5.dp)).background(N.B500).padding(horizontal = 5.dp, vertical = 3.dp)) { Box(Modifier.size(width = 10.dp, height = 3.dp).background(Color.White.copy(alpha = 0.9f))) }
+                    }
+                }
             }
         }
     }
 }
 
 @Composable
-private fun MiniClassicCard(h: Float, i: Int) {
+private fun MiniClassicCard(h: Float, i: Int, press: Float = 0f) {
     val shape = RoundedCornerShape(9.dp)
-    Column(Modifier.fillMaxWidth().height(h.dp).clip(shape).background(Color(0xFFF4F8FE)).border(1.dp, Color(0xFFE2E8F2), shape)) {
+    Column(Modifier.fillMaxWidth().height(h.dp).graphicsLayer { val k = 1f - 0.05f * press; scaleX = k; scaleY = k }.clip(shape).background(Color(0xFFF4F8FE)).border(if (press > 0.05f) 2.dp else 1.dp, if (press > 0.05f) N.B500 else Color(0xFFE2E8F2), shape)) {
         Box(Modifier.fillMaxWidth().height(26.dp).background(if (i % 2 == 0) PV_BANNER else Color(0xFFE6EEF9))) {
             Box(Modifier.align(Alignment.TopEnd).padding(4.dp).clip(RoundedCornerShape(4.dp)).background(Color(0xFFDCFCE7)).padding(horizontal = 4.dp, vertical = 1.dp)) {
                 Box(Modifier.size(width = 10.dp, height = 3.dp).background(Color(0xFF16A34A)))
@@ -129,7 +172,7 @@ private fun RingPreview() {
     val tr = rememberInfiniteTransition(label = "ring")
     val t by tr.animateFloat(0f, 1f, infiniteRepeatable(tween(6000, easing = LinearEasing), RepeatMode.Restart), label = "rg")
     val expand = smooth(seg(t, 0.15f, 0.32f)) - smooth(seg(t, 0.86f, 0.98f))
-    val pos = if (t in 0.34f..0.84f) sin(seg(t, 0.34f, 0.84f) * 2f * PI.toFloat()) * 1.0f else 0f
+    val pos = 5f * seg(t, 0.30f, 0.86f)   // หมุนต่อเนื่องไปทางเดียว ครบ 5 ใบ แล้วหุบ
     val shape = RoundedCornerShape(10.dp)
     Column(Modifier.fillMaxSize()) {
         PvHeader()
@@ -149,20 +192,29 @@ private fun RingPreview() {
                     Row(Modifier.padding(top = 5.dp).alpha(expand), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
                         for (k in 0 until 3) Box(Modifier.width(if (k == 0) 20.dp else 28.dp).height(8.dp).clip(RoundedCornerShape(4.dp)).background(if (k == 0) N.B600 else PV_GREY))
                     }
-                    Box(Modifier.fillMaxWidth().height((74 * expand).dp).padding(top = 6.dp).clip(RoundedCornerShape(0.dp)).alpha(expand)) {
-                        for (j in -2..2) {
+                    Box(Modifier.fillMaxWidth().height((74 * expand).dp).padding(top = 6.dp).clipToBounds().alpha(expand)) {
+                        // วงแหวนจริง: การ์ดวางตามมุม (30°/ใบ) หมุนต่อเนื่อง ใบข้างเอียงออกและเล็กลงตามระยะ
+                        val base = Math.floor(pos.toDouble()).toInt()
+                        for (j in base - 3..base + 3) {
                             val d = j - pos
-                            val ad = abs(d)
-                            val sc = 1f - 0.2f * min(1f, ad)
+                            val th = Math.toRadians((d * 30f).toDouble())
+                            val c = Math.cos(th).toFloat()
                             Box(
-                                Modifier.align(Alignment.TopCenter).size(width = 34.dp, height = 56.dp)
-                                    .graphicsLayer { translationX = d * 38f * density; scaleX = sc * (1f - 0.1f * min(1f, ad)); scaleY = sc; alpha = (1.15f - 0.5f * min(2f, ad)).coerceIn(0f, 1f) }
-                                    .clip(RoundedCornerShape(7.dp)).border(1.dp, if (ad < 0.5f) N.B700 else N.B500, RoundedCornerShape(7.dp)).background(Color.White).padding(3.dp)
+                                Modifier.align(Alignment.TopCenter).size(width = 28.dp, height = 52.dp).zIndex(c)
+                                    .graphicsLayer {
+                                        translationX = Math.sin(th).toFloat() * 74f * density
+                                        rotationY = d * 30f
+                                        cameraDistance = 12f * density
+                                        val sc = 0.72f + 0.28f * c.coerceAtLeast(0f)
+                                        scaleX = sc; scaleY = sc
+                                        alpha = ((c - 0.1f) / 0.4f).coerceIn(0f, 1f)
+                                    }
+                                    .clip(RoundedCornerShape(6.dp)).border(1.dp, if (abs(d) < 0.5f) N.B700 else N.B500, RoundedCornerShape(6.dp)).background(Color.White).padding(3.dp)
                             ) {
                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                    Box(Modifier.fillMaxWidth().height(28.dp).clip(RoundedCornerShape(5.dp)).background(RING_PV[(j + 5) % RING_PV.size]))
-                                    Box(Modifier.padding(top = 4.dp).width(20.dp).height(3.dp).clip(RoundedCornerShape(2.dp)).background(Color(0xFF9AA2B8)))
-                                    Box(Modifier.padding(top = 3.dp).width(14.dp).height(3.dp).clip(RoundedCornerShape(2.dp)).background(N.B600))
+                                    Box(Modifier.fillMaxWidth().height(24.dp).clip(RoundedCornerShape(4.dp)).background(RING_PV[Math.floorMod(j, RING_PV.size)]))
+                                    Box(Modifier.padding(top = 4.dp).width(16.dp).height(3.dp).clip(RoundedCornerShape(2.dp)).background(Color(0xFF9AA2B8)))
+                                    Box(Modifier.padding(top = 3.dp).width(11.dp).height(3.dp).clip(RoundedCornerShape(2.dp)).background(N.B600))
                                 }
                             }
                         }
