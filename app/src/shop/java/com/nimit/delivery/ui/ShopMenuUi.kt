@@ -449,7 +449,7 @@ private fun GroupCard(ms: ShopMenuState, m: MMenu, g: MGroup, gi: Int, total: In
             if (!proxy && rate != 0.0) Text(shopNum(rate) + " → " + ms.previewSubPrice(rate) + " (ราคาที่ลูกค้าเห็นต่อขีด)", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = C.Primary)
             Text("ลูกค้าจะกรอกจำนวนกิโลกรัม/ขีดเอง ระบบคำนวณราคาอัตโนมัติ", fontSize = 11.sp, color = SSub)
         } else {
-            ReqRow(g.required, 10.dp) { g.required = !g.required; dirty() }
+            ReqRow(g.required, 10.dp) { g.required = !g.required; if (g.required && g.maxSelect.trim().isEmpty()) g.maxSelect = "1"; dirty() }
             Row(Modifier.fillMaxWidth().padding(bottom = 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("จำนวนที่เลือกได้:", fontSize = 12.sp, color = SSub)
                 SInput(g.maxSelect, { g.maxSelect = it.filter { c -> c.isDigit() }; dirty() }, "ทุกอัน", Modifier.width(64.dp), h = 34.dp, r = 10.dp, fs = 13, hp = 8.dp, align = Alignment.Center)
@@ -524,7 +524,7 @@ private fun SubGroupCard(ms: ShopMenuState, o: MOption, sgi: Int, sg: MSubGroup,
                 contentAlignment = Alignment.Center
             ) { Text("✕", fontSize = 12.sp, color = ShopRed) }
         }
-        ReqRow(sg.required, 6.dp) { sg.required = !sg.required; dirty() }
+        ReqRow(sg.required, 6.dp) { sg.required = !sg.required; if (sg.required && sg.type == "normal" && sg.maxSelect.trim().isEmpty()) sg.maxSelect = "1"; dirty() }
         if (sg.type == "normal") {
             Row(Modifier.fillMaxWidth().padding(bottom = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("จำนวนที่เลือกได้:", fontSize = 11.sp, color = SSub)

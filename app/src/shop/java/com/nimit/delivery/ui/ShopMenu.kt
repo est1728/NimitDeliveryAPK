@@ -92,7 +92,7 @@ private fun parseSub(m: Map<String, Any?>): MSubGroup {
     } else {
         // รองรับข้อมูลเก่า: ไม่มี maxSelect → ดูจาก multiSelect (true = ไม่จำกัด, อื่นๆ = 1)
         val mx: Int = if (m["maxSelect"] != null) dn(m["maxSelect"]).toInt() else if (m["multiSelect"] == true) 0 else 1
-        sg.maxSelect = if (mx == 0) "" else mx.toString()
+        sg.maxSelect = if (mx == 0) (if (sg.required) "1" else "") else mx.toString()   // บังคับแต่ยังไม่ใส่จำนวน = เริ่มต้น 1
         val l = m["options"] as? List<*>
         if (l != null) for (x in l) {
             val o = mapOf2(x)
@@ -114,7 +114,7 @@ private fun parseGroup(m: Map<String, Any?>): MGroup {
         g.kgRate = ns(dn(m["kgRate"]))
     } else {
         val mx: Int = dn(m["maxSelect"]).toInt()
-        g.maxSelect = if (mx == 0) "" else mx.toString()
+        g.maxSelect = if (mx == 0) (if (g.required) "1" else "") else mx.toString()   // บังคับแต่ยังไม่ใส่จำนวน = เริ่มต้น 1
         val l = m["options"] as? List<*>
         if (l != null) for (x in l) {
             val o = mapOf2(x)
