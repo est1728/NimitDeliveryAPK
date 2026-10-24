@@ -203,13 +203,18 @@ fun RingShopCard(
     LaunchedEffect(expanded) {
         if (expanded) {
             failed = false
+            val t0 = System.currentTimeMillis()
             try {
                 val db = Firebase.firestore
                 val base = RingPricingCache.base ?: Pricing.from(try { db.collection("settings").document("pricing").get().await().data } catch (_: Exception) { null })
                 RingPricingCache.base = base
                 pricing = base.withShopType(s.d.str("shopType").ifEmpty { "normal" })
                 val snap = db.collection("shops").document(s.id).collection("menus").get().await()
-                menus = canonMenuCats(snap.documents.map { it.id to (it.data ?: emptyMap()) }, s.d["categories"])
+                val loaded = canonMenuCats(snap.documents.map { it.id to (it.data ?: emptyMap()) }, s.d["categories"])
+                // รอให้กรอบร้านขยายเสร็จก่อนค่อยสร้างวงแหวน (เหมือนต้นฉบับ) ไม่งั้นงานสร้างการ์ดชุดใหญ่ไปแย่งเฟรมกับอนิเมชั่นขยายจนกระตุก
+                val wait = 380L - (System.currentTimeMillis() - t0)
+                if (wait > 0) delay(wait)
+                menus = loaded
             } catch (_: Exception) { failed = true }
         } else {
             delay(420)
@@ -384,7 +389,16 @@ private fun RingCarousel(
     val scope = rememberCoroutineScope()
     val pos = remember(resetKey) { Animatable(0f) }
     val sp = remember(resetKey) { Animatable(0f) }
-    LaunchedEffect(resetKey) { sp.snapTo(0f); sp.animateTo(1f, tween(500, easing = FastOutSlowInEasing)) }
+    val firstRun = remember { BooleanArray(1) { true } }
+    LaunchedEffect(resetKey) {
+        sp.snapTo(0f)
+        // รอให้เฟรมแรก (ที่สร้างการ์ดหนักๆ) วาดเสร็จก่อน แล้วค่อยเริ่มนับเวลาอนิเมชั่น ไม่งั้นช่วงต้นโดนกลืนจนเหมือนโผล่มาเลย
+        withFrameNanos { }; withFrameNanos { }
+        val dur = if (firstRun[0]) 550 else 420
+        firstRun[0] = false
+        // การ์ดตกลงมาจากด้านบนพร้อมกางออกเป็นวง (easeOutCubic เหมือนต้นฉบับ)
+        sp.animateTo(1f, tween(dur, easing = CubicBezierEasing(0.215f, 0.61f, 0.355f, 1f)))
+    }
     val center by remember(resetKey) { derivedStateOf { Math.round(pos.value) } }
 
     Box(
