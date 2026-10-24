@@ -110,9 +110,10 @@ fun MenuScreen(session: Session, shopIdArg: String, onBack: () -> Unit, onCart: 
 
     val open = remember(shop, tick) { shop?.let { computeShopOpenNow(it) } ?: true }
     val shopCats = remember(shop) { asMapList(shop?.get("categories")).map { it.str("name") } }
-    val cats = remember(menus, shopCats) { listOf("ทั้งหมด") + if (shopCats.isNotEmpty()) shopCats else menus.map { it.second.str("category") }.filter { it.isNotEmpty() }.distinct() }
-    val filtered = remember(menus, cat, search) {
-        menus.filter { (_, m) -> (cat == "ทั้งหมด" || m.str("category") == cat) && (search.isBlank() || m.str("name").lowercase().contains(search.lowercase())) }
+    val menusN = remember(menus, shop) { canonMenuCats(menus, shop?.get("categories")) }
+    val cats = remember(menusN, shopCats) { listOf("ทั้งหมด") + if (shopCats.isNotEmpty()) shopCats else menusN.map { it.second.str("category") }.filter { it.isNotEmpty() }.distinct() }
+    val filtered = remember(menusN, cat, search) {
+        menusN.filter { (_, m) -> (cat == "ทั้งหมด" || m.str("category") == cat) && (search.isBlank() || m.str("name").lowercase().contains(search.lowercase())) }
     }
     val groups = remember(filtered, cat, shopCats) {
         val names = if (cat != "ทั้งหมด") listOf(cat) else if (shopCats.isNotEmpty()) shopCats else filtered.map { it.second.str("category") }.filter { it.isNotEmpty() }.distinct()

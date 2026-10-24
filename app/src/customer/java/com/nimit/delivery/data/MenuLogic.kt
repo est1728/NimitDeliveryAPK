@@ -8,6 +8,16 @@ import kotlin.math.ceil
 @Suppress("UNCHECKED_CAST")
 fun asMap(x: Any?): Doc? = x as? Map<String, Any?>
 fun asMapList(x: Any?): List<Doc> = (x as? List<*>)?.mapNotNull { asMap(it) } ?: emptyList()
+/** ให้ชื่อหมวดของเมนูตรงกับชื่อหมวดปัจจุบันของร้านเสมอ (อิง categoryId) — กันกรณีร้านเปลี่ยนชื่อหมวดแล้วเมนูยังเก็บชื่อเก่า ทำให้กดหมวดแล้วไม่เจอเมนู */
+fun canonMenuCats(menus: List<Pair<String, Doc>>, cats: Any?): List<Pair<String, Doc>> {
+    val byId = HashMap<String, String>()
+    asMapList(cats).forEach { c -> val id = c["id"]?.toString().orEmpty(); val n = c["name"]?.toString().orEmpty(); if (id.isNotEmpty() && n.isNotEmpty()) byId[id] = n }
+    if (byId.isEmpty()) return menus
+    return menus.map { (id, m) ->
+        val n = byId[m["categoryId"]?.toString().orEmpty()]
+        if (n != null && m["category"]?.toString() != n) id to (m + ("category" to n)) else id to m
+    }
+}
 fun num(x: Any?): Double? = when (x) { is Number -> x.toDouble(); is String -> x.toDoubleOrNull(); else -> null }
 fun fmtNum(d: Double): String = if (d == Math.floor(d) && !d.isInfinite()) d.toLong().toString() else d.toString()
 

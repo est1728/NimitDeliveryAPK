@@ -209,7 +209,7 @@ fun RingShopCard(
                 RingPricingCache.base = base
                 pricing = base.withShopType(s.d.str("shopType").ifEmpty { "normal" })
                 val snap = db.collection("shops").document(s.id).collection("menus").get().await()
-                menus = snap.documents.map { it.id to (it.data ?: emptyMap()) }
+                menus = canonMenuCats(snap.documents.map { it.id to (it.data ?: emptyMap()) }, s.d["categories"])
             } catch (_: Exception) { failed = true }
         } else {
             delay(420)
