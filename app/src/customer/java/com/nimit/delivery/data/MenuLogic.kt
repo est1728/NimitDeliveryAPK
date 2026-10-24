@@ -11,11 +11,18 @@ fun asMapList(x: Any?): List<Doc> = (x as? List<*>)?.mapNotNull { asMap(it) } ?:
 /** ให้ชื่อหมวดของเมนูตรงกับชื่อหมวดปัจจุบันของร้านเสมอ (อิง categoryId) — กันกรณีร้านเปลี่ยนชื่อหมวดแล้วเมนูยังเก็บชื่อเก่า ทำให้กดหมวดแล้วไม่เจอเมนู */
 fun canonMenuCats(menus: List<Pair<String, Doc>>, cats: Any?): List<Pair<String, Doc>> {
     val byId = HashMap<String, String>()
-    asMapList(cats).forEach { c -> val id = c["id"]?.toString().orEmpty(); val n = c["name"]?.toString().orEmpty(); if (id.isNotEmpty() && n.isNotEmpty()) byId[id] = n }
-    if (byId.isEmpty()) return menus
+    val byNorm = HashMap<String, String>()
+    // เทียบชื่อแบบหลวม: ไม่สนช่องว่าง/ตัวอีโมจิ/ตัวควบคุมล่องหน เผื่อชื่อต่างกันแค่สัญลักษณ์
+    fun nz(t: String): String = java.text.Normalizer.normalize(t, java.text.Normalizer.Form.NFC).filter { ch -> ch != '\uFE0E' && ch != '\uFE0F' && ch != '\u200B' && ch != '\u200C' && ch != '\u200D' && !ch.isWhitespace() }
+    asMapList(cats).forEach { c ->
+        val id = c["id"]?.toString().orEmpty(); val n = c["name"]?.toString().orEmpty()
+        if (n.isNotEmpty()) { if (id.isNotEmpty()) byId[id] = n; byNorm[nz(n)] = n }
+    }
+    if (byNorm.isEmpty()) return menus
     return menus.map { (id, m) ->
-        val n = byId[m["categoryId"]?.toString().orEmpty()]
-        if (n != null && m["category"]?.toString() != n) id to (m + ("category" to n)) else id to m
+        val cur = m["category"]?.toString().orEmpty()
+        val n = byId[m["categoryId"]?.toString().orEmpty()] ?: byNorm[nz(cur)]
+        if (n != null && cur != n) id to (m + ("category" to n)) else id to m
     }
 }
 fun num(x: Any?): Double? = when (x) { is Number -> x.toDouble(); is String -> x.toDoubleOrNull(); else -> null }
