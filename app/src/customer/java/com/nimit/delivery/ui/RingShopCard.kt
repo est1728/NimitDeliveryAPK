@@ -229,10 +229,12 @@ fun RingShopCard(
     val cats = remember(menus, shopCats) {
         listOf("ทั้งหมด") + (if (shopCats.isNotEmpty()) shopCats else (menus ?: emptyList()).map { it.second.str("category") }.filter { it.isNotEmpty() }.distinct())
     }
-    val filtered = remember(menus, cat, query) {
+    val filtered = remember(menus, cat, query, cats) {
         (menus ?: emptyList()).filter { (_, m) ->
             (cat == "ทั้งหมด" || m.str("category") == cat) && (query.isBlank() || m.str("name").lowercase().contains(query.trim().lowercase()))
         }
+            // เรียงตามลำดับหมวดของร้าน จบทีละหมวดก่อนไปหมวดถัดไป (ในหมวดเรียงตามลำดับเมนูที่ร้านตั้งไว้) หมวดที่ไม่รู้จักอยู่ท้าย
+            .sortedWith(compareBy<Pair<String, Doc>>({ val i = cats.indexOf(it.second.str("category")); if (i < 0) Int.MAX_VALUE else i }, { it.second.dbl("order") ?: 0.0 }))
     }
     // ไฮไลต์ชิปหมวดตามการ์ดตรงกลางตอนหมุน (เฉพาะแท็บ "ทั้งหมด") แล้วจางหายเมื่อหยุดหมุน ~3 วินาที
     var hlCat by remember { mutableStateOf<String?>(null) }
