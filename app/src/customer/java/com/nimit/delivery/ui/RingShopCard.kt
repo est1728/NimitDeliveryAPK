@@ -236,20 +236,19 @@ fun RingShopCard(
             // เรียงตามลำดับหมวดของร้าน จบทีละหมวดก่อนไปหมวดถัดไป (ในหมวดเรียงตามลำดับเมนูที่ร้านตั้งไว้) หมวดที่ไม่รู้จักอยู่ท้าย
             .sortedWith(compareBy<Pair<String, Doc>>({ val i = cats.indexOf(it.second.str("category")); if (i < 0) Int.MAX_VALUE else i }, { it.second.dbl("order") ?: 0.0 }))
     }
-    // ไฮไลต์ชิปหมวดตามการ์ดตรงกลางตอนหมุน (เฉพาะแท็บ "ทั้งหมด") แล้วจางหายเมื่อหยุดหมุน ~3 วินาที
-    var hlCat by remember { mutableStateOf<String?>(null) }
-    var hlTick by remember { mutableIntStateOf(0) }
+    // ชิปหมวดล็อกตามเมนูตรงกลางวงแหวน (ไม่มีการกรองหมวดแล้ว) แตะชิป = หมุนไปเมนูแรกของหมวดนั้น
+    val chipCats = remember(cats) { cats.drop(1) }
+    var frontCat by remember { mutableStateOf("") }
+    var jump by remember { mutableStateOf<Pair<String, Int>?>(null) }
     val chipState = rememberLazyListState()
     val chipDensity = LocalDensity.current.density
-    LaunchedEffect(hlTick) { if (hlTick > 0) { delay(3000); hlCat = null } }
-    LaunchedEffect(cat) { hlCat = null }
-    LaunchedEffect(hlCat) {
-        val h = hlCat ?: return@LaunchedEffect
-        val i = cats.indexOf(h)
-        if (i >= 0 && !chipState.isScrollInProgress) { try { chipState.animateScrollToItem(i, -(60 * chipDensity).toInt()) } catch (_: Exception) { } }
+    var chipDragging by remember { mutableStateOf(false) }
+    LaunchedEffect(chipState) { chipState.interactionSource.interactions.collect { chipDragging = it is DragInteraction.Start } }
+    LaunchedEffect(frontCat) {
+        if (frontCat.isEmpty() || chipDragging) return@LaunchedEffect
+        val i = chipCats.indexOf(frontCat)
+        if (i >= 0) { try { chipState.animateScrollToItem(i, -(60 * chipDensity).toInt()) } catch (_: Exception) { } }
     }
-    // ลูกค้าแตะ/ลากแถบหมวดเอง = เลิกไฮไลต์และไม่แย่งการเลื่อน
-    LaunchedEffect(chipState) { chipState.interactionSource.interactions.collect { if (it is DragInteraction.Start) hlCat = null } }
     val inCart = remember(tick, expanded) {
         val a = CartStore.load(session).optJSONObject(s.id)?.optJSONArray("items")
         var n = 0
@@ -309,14 +308,12 @@ fun RingShopCard(
             Box(Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, top = 8.dp).height(36.dp)) {
                 if (!searchShown) {
                     LazyRow(Modifier.padding(start = 44.dp).fillMaxHeight(), state = chipState, horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                        items(cats) { c ->
-                            val on = c == cat
-                            val hl = cat == "ทั้งหมด" && c != "ทั้งหมด" && c == hlCat
-                            val hlA by animateFloatAsState(if (hl) 1f else 0f, tween(250), label = "hl")
+                        items(chipCats) { c ->
+                            val on = c == frontCat
                             Text(
                                 c, fontSize = 12.sp, fontWeight = if (on) FontWeight.Medium else FontWeight.Normal, color = if (on) Color.White else RING_SUB,
-                                modifier = Modifier.border(2.dp, N.B500.copy(alpha = hlA), RoundedCornerShape(50)).padding(2.dp).clip(RoundedCornerShape(50)).background(if (on) N.B600 else Color.White)
-                                    .border(1.dp, if (on) N.B600 else Color(0xFFD5DEEE), RoundedCornerShape(50)).clickable { cat = c }.padding(horizontal = 11.dp, vertical = 5.dp)
+                                modifier = Modifier.clip(RoundedCornerShape(50)).background(if (on) N.B600 else Color.White)
+                                    .border(1.dp, if (on) N.B600 else Color(0xFFD5DEEE), RoundedCornerShape(50)).clickable { jump = c to ((jump?.second ?: 0) + 1) }.padding(horizontal = 11.dp, vertical = 5.dp)
                             )
                         }
                     }
@@ -350,9 +347,9 @@ fun RingShopCard(
                     list == null -> Text("กำลังโหลดเมนู...", fontSize = 13.sp, color = Color(0xFF94A3B8))
                     filtered.isEmpty() -> Text(if (list.isEmpty()) "ร้านนี้ยังไม่มีเมนู" else "ไม่พบเมนูที่ค้นหา", fontSize = 13.sp, color = Color(0xFF94A3B8))
                     else -> RingCarousel(
-                        items = filtered, pricing = pricing, resetKey = "$cat|$query",
-                        showCat = cat == "ทั้งหมด",
-                        onFront = { c -> if (cat == "ทั้งหมด" && c.isNotEmpty()) { hlCat = c; hlTick++ } },
+                        items = filtered, pricing = pricing, resetKey = "${filtered.size}|$query",
+                        showCat = true, jump = jump,
+                        onFront = { c -> frontCat = c },
                         onSoldOut = { Toast.makeText(ctx, "เมนูนี้หมดชั่วคราว", Toast.LENGTH_SHORT).show() },
                         onPick = { (id, m) -> popup = PopupState(id, m) }
                     )
@@ -406,7 +403,7 @@ fun RingShopCard(
 private fun RingCarousel(
     items: List<Pair<String, Doc>>, pricing: Pricing, resetKey: String,
     onSoldOut: () -> Unit, onPick: (Pair<String, Doc>) -> Unit,
-    showCat: Boolean = false, onFront: (String) -> Unit = {}
+    showCat: Boolean = false, jump: Pair<String, Int>? = null, onFront: (String) -> Unit = {}
 ) {
     val b = items.size
     val density = LocalDensity.current.density
@@ -434,9 +431,18 @@ private fun RingCarousel(
         sp.snapTo(1f)
     }
     val center by remember(resetKey) { derivedStateOf { Math.round(pos.value) } }
-    // แจ้งหมวดของการ์ดตรงกลางทุกครั้งที่ใบหน้าเปลี่ยน (ข้ามค่าแรกตอนเปิด)
+    // แจ้งหมวดของการ์ดตรงกลางทุกครั้งที่ใบหน้าเปลี่ยน (รวมค่าแรกตอนเปิด)
     LaunchedEffect(resetKey) {
-        snapshotFlow { Math.floorMod(Math.round(pos.value), b) }.drop(1).collect { i -> onFront(items.getOrNull(i)?.second?.str("category").orEmpty()) }
+        snapshotFlow { Math.floorMod(Math.round(pos.value), b) }.collect { i -> onFront(items.getOrNull(i)?.second?.str("category").orEmpty()) }
+    }
+    // แตะชิปหมวด: หมุนไปเมนูแรกของหมวดนั้นทางที่ใกล้ที่สุด
+    LaunchedEffect(jump) {
+        val j = jump ?: return@LaunchedEffect
+        val t = items.indexOfFirst { it.second.str("category") == j.first }
+        if (t < 0) return@LaunchedEffect
+        pos.stop()
+        val target = t + b * Math.round((pos.value - t) / b)
+        pos.animateTo(target.toFloat(), tween(520, easing = RING_BACK))
     }
 
     Box(
