@@ -419,7 +419,17 @@ private fun RingCarousel(
         val dur = if (firstRun[0]) 550 else 420
         firstRun[0] = false
         // การ์ดตกลงมาจากด้านบนพร้อมกางออกเป็นวง (easeOutCubic เหมือนต้นฉบับ)
-        sp.animateTo(1f, tween(dur, easing = CubicBezierEasing(0.215f, 0.61f, 0.355f, 1f)))
+        // นับเวลาเองทีละเฟรมและจำกัดเฟรมละไม่เกิน 24ms: ถ้าเครื่องค้างยาวช่วงต้น (สร้างการ์ดชุดใหญ่) อนิเมชั่นจะไม่ข้ามไปจบทันที
+        val ease = CubicBezierEasing(0.215f, 0.61f, 0.355f, 1f)
+        var last = withFrameNanos { it }
+        var elapsed = 0f
+        while (elapsed < dur) {
+            val now = withFrameNanos { it }
+            elapsed += ((now - last) / 1_000_000f).coerceIn(0f, 24f)
+            last = now
+            sp.snapTo(ease.transform((elapsed / dur).coerceIn(0f, 1f)))
+        }
+        sp.snapTo(1f)
     }
     val center by remember(resetKey) { derivedStateOf { Math.round(pos.value) } }
     // แจ้งหมวดของการ์ดตรงกลางทุกครั้งที่ใบหน้าเปลี่ยน (ข้ามค่าแรกตอนเปิด)
