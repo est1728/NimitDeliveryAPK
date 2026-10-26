@@ -311,9 +311,11 @@ fun RingShopCard(
                         items(chipCats) { c ->
                             val on = c == frontCat
                             Text(
-                                c, fontSize = 12.sp, fontWeight = if (on) FontWeight.Medium else FontWeight.Normal, color = if (on) Color.White else RING_SUB,
-                                modifier = Modifier.clip(RoundedCornerShape(50)).background(if (on) N.B600 else Color.White)
-                                    .border(1.dp, if (on) N.B600 else Color(0xFFD5DEEE), RoundedCornerShape(50)).clickable { jump = c to ((jump?.second ?: 0) + 1) }.padding(horizontal = 11.dp, vertical = 5.dp)
+                                c, fontSize = 12.sp, fontWeight = if (on) FontWeight.Medium else FontWeight.Normal, color = if (on) N.B700 else RING_SUB,
+                                // ชิปของหมวดที่กำลังอยู่: ขอบสีน้ำเงิน (ไม่ใช่สีน้ำเงินทึบทั้งช่อง)
+                                modifier = Modifier.clip(RoundedCornerShape(50)).background(Color.White)
+                                    .border(if (on) 2.dp else 1.dp, if (on) N.B500 else Color(0xFFD5DEEE), RoundedCornerShape(50))
+                                    .clickable { jump = c to ((jump?.second ?: 0) + 1) }.padding(horizontal = if (on) 10.dp else 11.dp, vertical = if (on) 4.dp else 5.dp)
                             )
                         }
                     }
@@ -411,14 +413,12 @@ private fun RingCarousel(
     val pos = remember(resetKey) { Animatable(0f) }
     val sp = remember(resetKey) { Animatable(0f) }
     val firstRun = remember { BooleanArray(1) { true } }
-    LaunchedEffect(resetKey) {
+    // อนิเมชั่นการ์ดตกลงมาแล้วกางเป็นวง (easeOutCubic เหมือนต้นฉบับ)
+    // นับเวลาเองทีละเฟรมและจำกัดเฟรมละไม่เกิน 24ms: ถ้าเครื่องค้างยาวช่วงต้น (สร้างการ์ดชุดใหญ่) อนิเมชั่นจะไม่ข้ามไปจบทันที
+    suspend fun fan(dur: Int) {
         sp.snapTo(0f)
-        // รอให้เฟรมแรก (ที่สร้างการ์ดหนักๆ) วาดเสร็จก่อน แล้วค่อยเริ่มนับเวลาอนิเมชั่น ไม่งั้นช่วงต้นโดนกลืนจนเหมือนโผล่มาเลย
+        // รอให้เฟรมแรก (ที่สร้างการ์ดหนักๆ) วาดเสร็จก่อน แล้วค่อยเริ่มนับเวลาอนิเมชั่น
         withFrameNanos { }; withFrameNanos { }
-        val dur = if (firstRun[0]) 550 else 420
-        firstRun[0] = false
-        // การ์ดตกลงมาจากด้านบนพร้อมกางออกเป็นวง (easeOutCubic เหมือนต้นฉบับ)
-        // นับเวลาเองทีละเฟรมและจำกัดเฟรมละไม่เกิน 24ms: ถ้าเครื่องค้างยาวช่วงต้น (สร้างการ์ดชุดใหญ่) อนิเมชั่นจะไม่ข้ามไปจบทันที
         val ease = CubicBezierEasing(0.215f, 0.61f, 0.355f, 1f)
         var last = withFrameNanos { it }
         var elapsed = 0f
@@ -430,19 +430,27 @@ private fun RingCarousel(
         }
         sp.snapTo(1f)
     }
+    LaunchedEffect(resetKey) {
+        val dur = if (firstRun[0]) 550 else 420
+        firstRun[0] = false
+        fan(dur)
+    }
     val center by remember(resetKey) { derivedStateOf { Math.round(pos.value) } }
     // แจ้งหมวดของการ์ดตรงกลางทุกครั้งที่ใบหน้าเปลี่ยน (รวมค่าแรกตอนเปิด)
     LaunchedEffect(resetKey) {
         snapshotFlow { Math.floorMod(Math.round(pos.value), b) }.collect { i -> onFront(items.getOrNull(i)?.second?.str("category").orEmpty()) }
     }
     // แตะชิปหมวด: หมุนไปเมนูแรกของหมวดนั้นทางที่ใกล้ที่สุด
+    val firstJumpNonce = remember { jump?.second ?: 0 }
     LaunchedEffect(jump) {
         val j = jump ?: return@LaunchedEffect
         val t = items.indexOfFirst { it.second.str("category") == j.first }
         if (t < 0) return@LaunchedEffect
+        if (j.second == firstJumpNonce) return@LaunchedEffect   // ค่าเก่าที่ค้างจากก่อนสร้างวงใหม่ ไม่ใช่การแตะใหม่
+        // ข้ามไปหมวดนั้นเลย ไม่ไล่ผ่านหมวดระหว่างทาง: ย้ายตำแหน่งทันทีแล้วกางวงใหม่
         pos.stop()
-        val target = t + b * Math.round((pos.value - t) / b)
-        pos.animateTo(target.toFloat(), tween(520, easing = RING_BACK))
+        pos.snapTo(t.toFloat())
+        fan(420)
     }
 
     Box(
