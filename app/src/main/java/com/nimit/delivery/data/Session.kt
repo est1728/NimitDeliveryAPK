@@ -27,6 +27,8 @@ class Session(ctx: Context) {
     var notifLastRead: String? get() = get("notifLastRead"); set(v) = set("notifLastRead", v)
     var chatOrderId: String? get() = get("chatOrderId"); set(v) = set("chatOrderId", v)
     /** รูปแบบการ์ดร้านในหน้าร้านทั้งหมด: "classic" (ค่าเริ่มต้น) (ค่าเริ่มต้นเป็น "ring" การ์ดแบบใหม่) */
+    /** โหมดตรวจอนิเมชั่นการ์ดเมนู (กดค้างที่หัวข้อ "รูปแบบการ์ดร้านค้า" ในหน้าตั้งค่า) */
+    var ringDebug: Boolean get() = get("ringDebug") == "1"; set(v) = set("ringDebug", if (v) "1" else "0")
     var cardStyle: String get() = get("cardStyle") ?: "ring"; set(v) = set("cardStyle", v)
     var selectedShopId: String? get() = get("selectedShopId"); set(v) = set("selectedShopId", v)
     var selectedShopName: String? get() = get("selectedShopName"); set(v) = set("selectedShopName", v)

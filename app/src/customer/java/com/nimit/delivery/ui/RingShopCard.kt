@@ -350,7 +350,7 @@ fun RingShopCard(
                     filtered.isEmpty() -> Text(if (list.isEmpty()) "ร้านนี้ยังไม่มีเมนู" else "ไม่พบเมนูที่ค้นหา", fontSize = 13.sp, color = Color(0xFF94A3B8))
                     else -> RingCarousel(
                         items = filtered, pricing = pricing, resetKey = "${filtered.size}|$query",
-                        showCat = true, jump = jump,
+                        showCat = true, jump = jump, debug = session.ringDebug,
                         onFront = { c -> frontCat = c },
                         onSoldOut = { Toast.makeText(ctx, "เมนูนี้หมดชั่วคราว", Toast.LENGTH_SHORT).show() },
                         onPick = { (id, m) -> popup = PopupState(id, m) }
@@ -405,7 +405,7 @@ fun RingShopCard(
 private fun RingCarousel(
     items: List<Pair<String, Doc>>, pricing: Pricing, resetKey: String,
     onSoldOut: () -> Unit, onPick: (Pair<String, Doc>) -> Unit,
-    showCat: Boolean = false, jump: Pair<String, Int>? = null, onFront: (String) -> Unit = {}
+    showCat: Boolean = false, jump: Pair<String, Int>? = null, onFront: (String) -> Unit = {}, debug: Boolean = false
 ) {
     val b = items.size
     val density = LocalDensity.current.density
@@ -485,6 +485,27 @@ private fun RingCarousel(
             }
         )
     ) {
+        if (debug) {
+            // โหมดตรวจ: แสดงค่า sp และความยาวเฟรมช่วง 2 วินาทีแรกหลังเปิด (ใช้ดูว่าเครื่องค้างตรงไหน)
+            var info by remember(resetKey) { mutableStateOf("รอ...") }
+            LaunchedEffect(resetKey) {
+                var last = withFrameNanos { it }
+                val t0 = last
+                var maxDt = 0f; var frames = 0; var lastShow = last; var slow = 0
+                while (true) {
+                    val now = withFrameNanos { it }
+                    val dt = (now - last) / 1_000_000f
+                    last = now; frames++
+                    val el = (now - t0) / 1_000_000f
+                    if (el < 2000f) { if (dt > maxDt) maxDt = dt; if (dt > 40f) slow++ }
+                    if (now - lastShow > 90_000_000L) {
+                        lastShow = now
+                        info = "t=%.0fms sp=%.2f dt=%.0f max=%.0f ช้า>40ms=%d f=%d".format(el, sp.value, dt, maxDt, slow, frames)
+                    }
+                }
+            }
+            Text(info, fontSize = 10.sp, color = Color.White, modifier = Modifier.align(Alignment.BottomStart).zIndex(100f).background(Color(0xCC000000)).padding(horizontal = 4.dp, vertical = 2.dp))
+        }
         for (j in center - 4..center + 4) {
             key(j) {
                 val idx = Math.floorMod(j, b)

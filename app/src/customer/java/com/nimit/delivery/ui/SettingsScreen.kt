@@ -20,6 +20,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.zIndex
@@ -44,7 +46,16 @@ fun SettingsScreen(session: Session, onBack: () -> Unit) {
     Column(Modifier.fillMaxSize().background(C.Gray)) {
         TopBar("ตั้งค่า", onBack)
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("รูปแบบการ์ดร้านค้า", fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, color = C.Text)
+            val dbgCtx = androidx.compose.ui.platform.LocalContext.current
+            Text(
+                "รูปแบบการ์ดร้านค้า", fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, color = C.Text,
+                modifier = Modifier.pointerInput(Unit) {
+                    detectTapGestures(onLongPress = {
+                        session.ringDebug = !session.ringDebug
+                        android.widget.Toast.makeText(dbgCtx, if (session.ringDebug) "โหมดตรวจอนิเมชั่น: เปิด" else "โหมดตรวจอนิเมชั่น: ปิด", android.widget.Toast.LENGTH_SHORT).show()
+                    })
+                }
+            )
             Text("เลือกการแสดงรายการร้านในหน้าหลัก ร้านแนะนำยังเปิดหน้าเมนูเหมือนเดิม", fontSize = 12.sp, color = C.Subtext)
             Row(Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                 StyleTile("คลาสสิก", style == "classic", Modifier.weight(1f)) { style = "classic"; session.cardStyle = "classic" }
