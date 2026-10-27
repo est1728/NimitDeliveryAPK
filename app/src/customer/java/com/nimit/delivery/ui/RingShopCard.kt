@@ -517,7 +517,9 @@ private fun RingCarousel(
                         .zIndex(30f - min(25f, abs(j - center).toFloat()))
                         .graphicsLayer {
                             val d = j - pos.value
-                            alpha = sp.value * ((ringCos(d) - 0.1f) / 0.35f).coerceIn(0f, 1f)
+                            // ช่วงแรกของการกางวง (sp ต่ำ) การ์ดยังซ้อนกันเป็นกองเดียว: ซ่อนไว้ก่อนแล้วค่อยเฟดเข้าพร้อมการกาง จะไม่เห็นกองการ์ดซ้อนเลอะๆ
+                            val fade = ((sp.value - 0.12f) / 0.88f).coerceIn(0f, 1f)
+                            alpha = fade * ((ringCos(d) - 0.1f) / 0.35f).coerceIn(0f, 1f)
                         }
                         .drawWithContent {
                             val m4 = ringMatrix(j - pos.value, sp.value, density)
