@@ -62,6 +62,7 @@ fun AdminHome(s: AdminSession, onLogout: () -> Unit) {
     var openId by remember { mutableStateOf<String?>(null) }
     var chatId by remember { mutableStateOf<String?>(null) }
     var showMenu by remember { mutableStateOf(false) }
+    var creating by remember { mutableStateOf(false) }
     val store = remember(s.franchiseId) { AdminOrdersStore(s) }
     DisposableEffect(store) {
         store.start()
@@ -69,7 +70,12 @@ fun AdminHome(s: AdminSession, onLogout: () -> Unit) {
     }
     val cid = chatId
     val oid = openId
-    if (cid != null) {
+    if (creating) {
+        BackHandler { creating = false }
+        Box(Modifier.fillMaxSize().statusBarsPadding()) {
+            AdminCreateOrderScreen(store, onBack = { creating = false }, onCreated = { creating = false })
+        }
+    } else if (cid != null) {
         BackHandler { chatId = null }
         Box(Modifier.fillMaxSize().statusBarsPadding()) { ChatScreen(cid, "admin", { chatId = null }) }
     } else if (oid != null) {
@@ -85,7 +91,7 @@ fun AdminHome(s: AdminSession, onLogout: () -> Unit) {
                         s, store,
                         onOpen = { openId = it },
                         onMenu = { showMenu = true },
-                        onCreate = { Toast.makeText(ctx, "หน้าสร้างออเดอร์ยังไม่เปิดใช้", Toast.LENGTH_SHORT).show() }
+                        onCreate = { creating = true }
                     )
                 } else {
                     Box(Modifier.fillMaxSize().statusBarsPadding(), contentAlignment = Alignment.Center) {
