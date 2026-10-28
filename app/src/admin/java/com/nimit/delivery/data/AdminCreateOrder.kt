@@ -2,6 +2,7 @@ package com.nimit.delivery.data
 
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.Query
 import java.net.HttpURLConnection
 import java.net.URL
 import kotlinx.coroutines.CoroutineScope
@@ -197,10 +198,23 @@ object AdminCreateApi {
         return out
     }
 
+    /** รายชื่อลูกค้า: อ่านจาก customers ถ้าไม่ได้สิทธิ์ ใช้ข้อมูลลูกค้าจากออเดอร์ล่าสุด 500 ใบแทน */
     suspend fun customers(): List<AdminCust> {
-        val snap = db.collection("customers").get().await()
-        return snap.documents.map {
-            AdminCust(it.id, it.getString("name") ?: "", it.getString("address") ?: "", (it.get("lat") as? Number)?.toDouble(), (it.get("lng") as? Number)?.toDouble())
+        try {
+            val snap = db.collection("customers").get().await()
+            return snap.documents.map {
+                AdminCust(it.id, it.getString("name") ?: "", it.getString("address") ?: "", (it.get("lat") as? Number)?.toDouble(), (it.get("lng") as? Number)?.toDouble())
+            }
+        } catch (e: Exception) {
+            val snap = db.collection("orders").orderBy("createdAt", Query.Direction.DESCENDING).limit(500).get().await()
+            val seen = LinkedHashMap<String, AdminCust>()
+            for (d in snap.documents) {
+                val cm = d.get("customer") as? Map<*, *> ?: continue
+                val ph: String = cm["phone"]?.toString() ?: ""
+                if (ph.isEmpty() || seen.containsKey(ph)) continue
+                seen[ph] = AdminCust(ph, cm["name"]?.toString() ?: "", cm["address"]?.toString() ?: "", (cm["lat"] as? Number)?.toDouble(), (cm["lng"] as? Number)?.toDouble())
+            }
+            return seen.values.toList()
         }
     }
 
@@ -310,4 +324,96 @@ object AdminCreateApi {
             }
         }
     }
+
+    /** โหลดออเดอร์เดิมมาแก้: ร้าน/ลูกค้า/รายการ ใช้ข้อมูลที่เก็บไว้ในออเดอร์เอง (ประเภทร้านอ่านจาก shops) */
+    suspend fun loadForEdit(orderDocId: String): AdminLoadedOrder {
+        val snap = db.collection("orders").document(orderDocId).get().await()
+        if (!snap.exists()) throw AdminBizException("ไม่พบออเดอร์นี้ อาจถูกลบไปแล้ว")
+        val m: Map<String, Any> = snap.data ?: emptyMap()
+        val sid: String = str(m, "shopId")
+        var shopType: String = str(m, "shopType").ifEmpty { "normal" }
+        try {
+            val ss = db.collection("shops").document(sid).get().await()
+            if (ss.exists()) shopType = ss.getString("shopType") ?: "normal"
+        } catch (e: Exception) { }
+        val shop = AdminShopRef(sid, str(m, "shopName"), str(m, "shopPhone"), str(m, "shopAddress"), (m["shopLat"] as? Number)?.toDouble(), (m["shopLng"] as? Number)?.toDouble(), shopType, true)
+        val cm = m["customer"] as? Map<*, *>
+        val cus = AdminCust(
+            cm?.get("phone")?.toString() ?: "", cm?.get("name")?.toString() ?: "", cm?.get("address")?.toString() ?: "",
+            (cm?.get("lat") as? Number)?.toDouble(), (cm?.get("lng") as? Number)?.toDouble()
+        )
+        val lines = ArrayList<AdminCartLine>()
+        val raw = m["items"] as? List<*> ?: emptyList<Any?>()
+        for (i in raw.indices) {
+            val im = raw[i] as? Map<*, *> ?: continue
+            val opts = ArrayList<AdminChosen>()
+            val ol = im["options"] as? List<*> ?: emptyList<Any?>()
+            for (o in ol) {
+                val om = o as? Map<*, *> ?: continue
+                opts.add(AdminChosen(str(om, "groupTitle"), str(om, "name"), dbl(om["price"], 0.0)))
+            }
+            val price: Long = Math.round(dbl(im["price"], 0.0))
+            val qty: Int = (im["qty"] as? Number)?.toInt() ?: 1
+            lines.add(AdminCartLine("edit_" + i, AdminCartItem(str(im, "name"), dbl(im["basePrice"], 0.0), price, qty, str(im, "note"), opts, str(im, "category"))))
+        }
+        return AdminLoadedOrder(shop, cus, lines, str(m, "status"))
+    }
+
+    /** บันทึกการแก้ไขออเดอร์เดิม: เขียนทับเฉพาะ ร้าน/ลูกค้า/รายการ/ราคา ไม่แตะสถานะ ไรเดอร์ รหัส เวลาสร้าง */
+    suspend fun update(orderDocId: String, shop: AdminShopRef, cus: AdminCust, items: List<AdminCartItem>, c: AdminOrderCalc) {
+        val ref = db.collection("orders").document(orderDocId)
+        val cur = ref.get().await()
+        if (!cur.exists()) throw AdminBizException("ไม่พบออเดอร์นี้ อาจถูกลบไปแล้ว")
+        val st: String = cur.getString("status") ?: "pending"
+        if (st == "done" || st == "rejected") throw AdminBizException("ออเดอร์นี้จบงานแล้ว แก้ไขรายการไม่ได้")
+        val itemMaps = ArrayList<Map<String, Any?>>()
+        for (ci in items) {
+            val opts = ArrayList<Map<String, Any?>>()
+            for (o in ci.options) {
+                val om = HashMap<String, Any?>()
+                om["groupTitle"] = o.groupTitle
+                om["name"] = o.name
+                om["price"] = numAny(o.price)
+                opts.add(om)
+            }
+            val im = HashMap<String, Any?>()
+            im["name"] = ci.name
+            im["price"] = ci.price
+            im["basePrice"] = numAny(ci.basePrice)
+            im["qty"] = ci.qty
+            im["options"] = opts
+            im["note"] = ci.note
+            im["imgUrl"] = ""
+            im["category"] = ci.category
+            itemMaps.add(im)
+        }
+        val cm = HashMap<String, Any?>()
+        cm["name"] = cus.name
+        cm["phone"] = cus.phone
+        cm["address"] = cus.address
+        cm["lat"] = cus.lat
+        cm["lng"] = cus.lng
+        val data = HashMap<String, Any?>()
+        data["shopId"] = shop.id
+        data["shopName"] = shop.name
+        data["shopType"] = shop.shopType
+        data["shopPhone"] = shop.phone
+        data["shopAddress"] = shop.address
+        data["shopLat"] = shop.lat
+        data["shopLng"] = shop.lng
+        data["customer"] = cm
+        data["items"] = itemMaps
+        data["subtotal"] = c.subtotal
+        data["baseCost"] = numAny(c.baseCost)
+        data["deliveryFee"] = numAny(c.deliveryFee)
+        data["grandTotal"] = numAny(c.grandTotal)
+        data["totalDiff"] = numAny(c.totalDiff)
+        data["walletCut"] = c.walletCut
+        data["riderEarn"] = c.riderEarn
+        data["paymentMethod"] = "cash"
+        data["updatedAt"] = FieldValue.serverTimestamp()
+        ref.update(data).await()
+    }
 }
+
+class AdminLoadedOrder(val shop: AdminShopRef, val cus: AdminCust, val lines: List<AdminCartLine>, val status: String)

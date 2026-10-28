@@ -75,6 +75,7 @@ fun AdminHome(s: AdminSession, onLogout: () -> Unit) {
     var chatId by remember { mutableStateOf<String?>(null) }
     var showMenu by remember { mutableStateOf(false) }
     var creating by remember { mutableStateOf(false) }
+    var editId by remember { mutableStateOf<String?>(null) }
     val store = remember(s.franchiseId) { AdminOrdersStore(s) }
     var showBattery by remember { mutableStateOf(false) }
     val notifPerm = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { _ ->
@@ -101,10 +102,16 @@ fun AdminHome(s: AdminSession, onLogout: () -> Unit) {
     }
     val cid = chatId
     val oid = openId
+    val eid = editId
     if (creating) {
         BackHandler { creating = false }
         Box(Modifier.fillMaxSize().statusBarsPadding()) {
             AdminCreateOrderScreen(store, onBack = { creating = false }, onCreated = { creating = false })
+        }
+    } else if (eid != null) {
+        BackHandler { editId = null }
+        Box(Modifier.fillMaxSize().statusBarsPadding()) {
+            AdminCreateOrderScreen(store, onBack = { editId = null }, onCreated = { editId = null }, editOrderId = eid)
         }
     } else if (cid != null) {
         BackHandler { chatId = null }
@@ -112,7 +119,7 @@ fun AdminHome(s: AdminSession, onLogout: () -> Unit) {
     } else if (oid != null) {
         BackHandler { openId = null }
         Box(Modifier.fillMaxSize().statusBarsPadding()) {
-            AdminOrderDetailScreen(oid, onBack = { openId = null }, onChat = { chatId = oid })
+            AdminOrderDetailScreen(oid, onBack = { openId = null }, onChat = { chatId = oid }, onEditMenu = { editId = oid })
         }
     } else {
         Column(Modifier.fillMaxSize().background(C.Gray)) {

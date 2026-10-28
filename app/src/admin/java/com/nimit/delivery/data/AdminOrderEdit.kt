@@ -33,7 +33,7 @@ object AdminOrderEdit {
             c["phone"] = phone
             c["address"] = addr
             c["updatedAt"] = FieldValue.serverTimestamp()
-            db.collection("customers").document(phone).set(c, SetOptions.merge()).await()
+            try { db.collection("customers").document(phone).set(c, SetOptions.merge()).await() } catch (e: Exception) { }
         }
     }
 

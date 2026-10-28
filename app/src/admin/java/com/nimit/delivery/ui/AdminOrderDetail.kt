@@ -129,7 +129,7 @@ private fun dOpts(m: Map<*, *>): List<String> {
 }
 
 @Composable
-fun AdminOrderDetailScreen(orderId: String, onBack: () -> Unit, onChat: () -> Unit) {
+fun AdminOrderDetailScreen(orderId: String, onBack: () -> Unit, onChat: () -> Unit, onEditMenu: () -> Unit = {}) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     var order by remember { mutableStateOf<AdminOrd?>(null) }
@@ -482,6 +482,13 @@ fun AdminOrderDetailScreen(orderId: String, onBack: () -> Unit, onChat: () -> Un
         DEditDialog(
             "แก้ไขออเดอร์", listOf("ค่าส่ง", "หมายเหตุแอดมิน"),
             listOf(Math.round(o.n("deliveryFee")).toString(), o.s("adminNote")), listOf(KeyboardType.Number, KeyboardType.Text),
+            extra = {
+                Box(
+                    Modifier.fillMaxWidth().height(44.dp).clip(RoundedCornerShape(10.dp)).background(C.PrimaryLight)
+                        .clickable { editKind = ""; onEditMenu() },
+                    contentAlignment = Alignment.Center
+                ) { Text("แก้ไขรายการเมนูในออเดอร์ ›", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = C.Primary) }
+            },
             onDismiss = { editKind = "" },
             onSave = { v ->
                 editKind = ""
@@ -549,7 +556,8 @@ private fun DEditDialog(
     initial: List<String>,
     types: List<KeyboardType>,
     onDismiss: () -> Unit,
-    onSave: (List<String>) -> Unit
+    onSave: (List<String>) -> Unit,
+    extra: (@Composable () -> Unit)? = null
 ) {
     val values = remember { mutableStateListOf<String>().apply { addAll(initial) } }
     AlertDialog(
@@ -557,6 +565,7 @@ private fun DEditDialog(
         title = { Text(title) },
         text = {
             Column(Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (extra != null) extra()
                 for (i in labels.indices) {
                     OutlinedTextField(
                         value = values[i], onValueChange = { values[i] = it },

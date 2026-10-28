@@ -55,6 +55,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.nimit.delivery.data.ADMIN_STATUS_TH
 import com.nimit.delivery.data.AdminCartItem
 import com.nimit.delivery.data.AdminCartLine
 import com.nimit.delivery.data.AdminChosen
@@ -315,10 +316,10 @@ private class PopupMath(val pr: AdminPricing, val proxy: Boolean) {
 }
 
 @Composable
-fun AdminCreateOrderScreen(store: AdminOrdersStore, onBack: () -> Unit, onCreated: () -> Unit) {
+fun AdminCreateOrderScreen(store: AdminOrdersStore, onBack: () -> Unit, onCreated: () -> Unit, editOrderId: String? = null) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
-    val previewId = remember { AdminCreateApi.randomOrderId() }
+    val previewId = remember { editOrderId ?: AdminCreateApi.randomOrderId() }
     var pricing by remember { mutableStateOf(AdminCreateApi.defaultPricing()) }
     var allShops by remember { mutableStateOf<List<AdminShopRef>?>(null) }
     var shopsError by remember { mutableStateOf<String?>(null) }
@@ -339,6 +340,21 @@ fun AdminCreateOrderScreen(store: AdminOrdersStore, onBack: () -> Unit, onCreate
     var busy by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) { pricing = AdminCreateApi.pricing() }
+    var editStatus by remember { mutableStateOf("") }
+    LaunchedEffect(editOrderId) {
+        if (editOrderId != null) {
+            try {
+                val loaded = AdminCreateApi.loadForEdit(editOrderId)
+                shop = loaded.shop
+                cus = loaded.cus
+                cart.clear()
+                cart.addAll(loaded.lines)
+                editStatus = loaded.status
+            } catch (e: Exception) {
+                cToast(ctx, "โหลดออเดอร์เดิมไม่สำเร็จ: " + (e.message ?: ""))
+            }
+        }
+    }
     LaunchedEffect(Unit) {
         try { allShops = AdminCreateApi.shops() } catch (e: Exception) { shopsError = e.message ?: "โหลดร้านค้าไม่สำเร็จ" }
     }
@@ -385,7 +401,7 @@ fun AdminCreateOrderScreen(store: AdminOrdersStore, onBack: () -> Unit, onCreate
                     contentAlignment = Alignment.Center
                 ) { Icon(ArrowBackIcon, null, tint = Color.White, modifier = Modifier.size(18.dp)) }
                 Spacer(Modifier.width(12.dp))
-                Text("สร้างออเดอร์", fontSize = 17.sp, fontWeight = FontWeight.ExtraBold, color = Color.White, modifier = Modifier.weight(1f))
+                Text(if (editOrderId != null) "แก้ไขออเดอร์" else "สร้างออเดอร์", fontSize = 17.sp, fontWeight = FontWeight.ExtraBold, color = Color.White, modifier = Modifier.weight(1f))
                 Box(Modifier.clip(RoundedCornerShape(20.dp)).background(Color.White.copy(alpha = 0.2f)).padding(horizontal = 12.dp, vertical = 4.dp)) {
                     Text(previewId, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
                 }
@@ -397,7 +413,7 @@ fun AdminCreateOrderScreen(store: AdminOrdersStore, onBack: () -> Unit, onCreate
             ) {
                 CSection("รายละเอียด", null) {
                     CRow("รหัส", previewId, null)
-                    CRow("สถานะ", "รอสร้าง", CYellow)
+                    CRow("สถานะ", if (editOrderId != null) (ADMIN_STATUS_TH[editStatus] ?: editStatus) else "รอสร้าง", CYellow)
                     CRow("สร้างโดย", "แอดมิน", null)
                 }
                 CSection("ข้อมูลร้านค้า", null) {
@@ -470,8 +486,13 @@ fun AdminCreateOrderScreen(store: AdminOrdersStore, onBack: () -> Unit, onCreate
                                 busy = true
                                 scope.launch {
                                     try {
-                                        val oid = AdminCreateApi.create(previewId, s2, c2, items, k2)
-                                        cToast(ctx, "สร้างออเดอร์ " + oid + " แล้ว")
+                                        if (editOrderId != null) {
+                                            AdminCreateApi.update(editOrderId, s2, c2, items, k2)
+                                            cToast(ctx, "บันทึกการแก้ไขออเดอร์แล้ว")
+                                        } else {
+                                            val oid = AdminCreateApi.create(previewId, s2, c2, items, k2)
+                                            cToast(ctx, "สร้างออเดอร์ " + oid + " แล้ว")
+                                        }
                                         onCreated()
                                     } catch (e: Exception) {
                                         cToast(ctx, "เกิดข้อผิดพลาด: " + (e.message ?: ""))
@@ -481,7 +502,7 @@ fun AdminCreateOrderScreen(store: AdminOrdersStore, onBack: () -> Unit, onCreate
                             }
                         },
                     contentAlignment = Alignment.Center
-                ) { Text(if (busy) "กำลังสร้าง..." else "สร้างออเดอร์", fontSize = 17.sp, fontWeight = FontWeight.ExtraBold, color = Color.White) }
+                ) { Text(if (busy) (if (editOrderId != null) "กำลังบันทึก..." else "กำลังสร้าง...") else (if (editOrderId != null) "บันทึกการแก้ไข" else "สร้างออเดอร์"), fontSize = 17.sp, fontWeight = FontWeight.ExtraBold, color = Color.White) }
             }
         }
 
