@@ -1,7 +1,19 @@
 package com.nimit.delivery.ui
 
 import android.widget.Toast
+import android.Manifest
+import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.net.Uri
+import android.os.Build
+import android.os.PowerManager
+import android.provider.Settings
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.LaunchedEffect
+import androidx.core.content.ContextCompat
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -47,7 +59,7 @@ fun AdminNav() {
     if (s == null) {
         AdminLoginScreen(onDone = { session = AdminRepo.load(ctx) })
     } else {
-        AdminHome(s, onLogout = { AdminRepo.clear(ctx); session = null })
+        AdminHome(s, onLogout = { AdminAlertService.stop(ctx); AdminFcm.unregister(ctx, s.franchiseId); AdminRepo.clear(ctx); session = null })
     }
     AdminUpdatePrompt()
 }
@@ -64,6 +76,25 @@ fun AdminHome(s: AdminSession, onLogout: () -> Unit) {
     var showMenu by remember { mutableStateOf(false) }
     var creating by remember { mutableStateOf(false) }
     val store = remember(s.franchiseId) { AdminOrdersStore(s) }
+    var showBattery by remember { mutableStateOf(false) }
+    val notifPerm = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { _ ->
+        AdminAlertService.start(ctx)
+        AdminFcm.register(ctx, s.franchiseId)
+    }
+    LaunchedEffect(s.franchiseId) {
+        AdminAlertService.ensureChannels(ctx)
+        val need: Boolean = Build.VERSION.SDK_INT >= 33 &&
+            ContextCompat.checkSelfPermission(ctx, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        if (need) {
+            notifPerm.launch(Manifest.permission.POST_NOTIFICATIONS)
+        } else {
+            AdminAlertService.start(ctx)
+            AdminFcm.register(ctx, s.franchiseId)
+        }
+        val pm = ctx.getSystemService(Context.POWER_SERVICE) as PowerManager
+        val asked: Boolean = ctx.getSharedPreferences("nimit_admin_alert", Context.MODE_PRIVATE).getBoolean("batteryAsked", false)
+        if (!asked && !pm.isIgnoringBatteryOptimizations(ctx.packageName)) showBattery = true
+    }
     DisposableEffect(store) {
         store.start()
         onDispose { store.stop() }
@@ -95,7 +126,7 @@ fun AdminHome(s: AdminSession, onLogout: () -> Unit) {
                     )
                 } else {
                     Box(Modifier.fillMaxSize().statusBarsPadding(), contentAlignment = Alignment.Center) {
-                        Text("หน้า" + AdminMenu[tab] + "อยู่ระหว่างพัฒนา", fontSize = 13.sp, color = C.Subtext)
+                        if (tab == 5) AdminSettingsPanel() else Text("หน้า" + AdminMenu[tab] + "อยู่ระหว่างพัฒนา", fontSize = 13.sp, color = C.Subtext)
                     }
                 }
             }
@@ -114,6 +145,25 @@ fun AdminHome(s: AdminSession, onLogout: () -> Unit) {
                 }
             }
         }
+    }
+
+    if (showBattery) {
+        val markAsked = { ctx.getSharedPreferences("nimit_admin_alert", Context.MODE_PRIVATE).edit().putBoolean("batteryAsked", true).apply() }
+        AlertDialog(
+            onDismissRequest = { markAsked(); showBattery = false },
+            title = { Text("ให้แอปทำงานเบื้องหลัง") },
+            text = { Text("เพื่อให้เสียงแจ้งเตือนออเดอร์ดังแม้ปิดจอหรือปิดแอป ควรอนุญาตให้แอปไม่ถูกจำกัดแบตเตอรี่") },
+            confirmButton = {
+                TextButton(onClick = {
+                    markAsked()
+                    showBattery = false
+                    try {
+                        ctx.startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).setData(Uri.parse("package:" + ctx.packageName)))
+                    } catch (e: Exception) { }
+                }) { Text("ตั้งค่า") }
+            },
+            dismissButton = { TextButton(onClick = { markAsked(); showBattery = false }) { Text("ไว้ทีหลัง") } }
+        )
     }
 
     if (showMenu) {
