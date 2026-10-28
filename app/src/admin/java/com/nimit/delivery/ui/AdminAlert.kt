@@ -81,7 +81,10 @@ object AdminAlert {
     /** ออเดอร์ที่เสียงเตือนดังไปแล้ว (โหมดดังรอบเดียว) กันดังซ้ำออเดอร์เดิม */
     val rung: MutableSet<String> = java.util.Collections.synchronizedSet(HashSet<String>())
 
-    private val pcm: ShortArray by lazy { build() }
+    private val synth: ShortArray by lazy { build() }
+    private val pcm: ShortArray get() = AdminSound.pcm ?: synth
+    private val rate: Int get() = if (AdminSound.pcm != null) AdminSound.rate else SR
+    private val chans: Int get() = if (AdminSound.pcm != null) AdminSound.channels else 1
 
     private fun build(): ShortArray {
         val notes: List<Pair<Double, Double>> = listOf(988.0 to 0.22, 740.0 to 0.42, 0.0 to 0.10, 988.0 to 0.22, 740.0 to 0.42, 0.0 to 0.70)
@@ -130,7 +133,7 @@ object AdminAlert {
     private fun track(vol: Int): AudioTrack {
         val t: AudioTrack = AudioTrack.Builder()
             .setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ALARM).setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build())
-            .setAudioFormat(AudioFormat.Builder().setEncoding(AudioFormat.ENCODING_PCM_16BIT).setSampleRate(SR).setChannelMask(AudioFormat.CHANNEL_OUT_MONO).build())
+            .setAudioFormat(AudioFormat.Builder().setEncoding(AudioFormat.ENCODING_PCM_16BIT).setSampleRate(rate).setChannelMask(if (chans == 2) AudioFormat.CHANNEL_OUT_STEREO else AudioFormat.CHANNEL_OUT_MONO).build())
             .setBufferSizeInBytes(pcm.size * 2)
             .setTransferMode(AudioTrack.MODE_STATIC)
             .build()
@@ -147,9 +150,10 @@ object AdminAlert {
     fun startLoop(ctx: Context) {
         if (loop != null) return
         try {
+            AdminSound.prepare(ctx)
             boost(ctx)
             val t: AudioTrack = track(volume(ctx))
-            t.setLoopPoints(0, pcm.size, -1)
+            t.setLoopPoints(0, pcm.size / chans, -1)
             t.play()
             loop = t
         } catch (e: Exception) { loop = null }
@@ -159,13 +163,14 @@ object AdminAlert {
     fun playOnce(ctx: Context): Boolean {
         if (loop != null || once != null) return false
         try {
+            AdminSound.prepare(ctx)
             boost(ctx)
             val t: AudioTrack = track(volume(ctx))
             t.play()
             once = t
             main.postDelayed({
                 if (once === t) { once = null; free(t) }
-            }, (pcm.size * 1000L / SR) + 200)
+            }, (pcm.size / chans * 1000L / rate) + 200)
         } catch (e: Exception) { once = null }
         return true
     }
@@ -185,13 +190,14 @@ object AdminAlert {
             val old: AudioTrack? = test
             test = null
             free(old)
+            AdminSound.prepare(ctx)
             boost(ctx)
             val t: AudioTrack = track(volume(ctx))
             t.play()
             test = t
             main.postDelayed({
                 if (test === t) { test = null; free(t) }
-            }, (pcm.size * 1000L / SR) + 200)
+            }, (pcm.size / chans * 1000L / rate) + 200)
         } catch (e: Exception) { }
     }
 }
@@ -346,7 +352,7 @@ fun AdminVolumeControl() {
     var vol by remember { mutableFloatStateOf(AdminAlert.volume(ctx).toFloat()) }
     var playing by remember { mutableStateOf(false) }
     var rep by remember { mutableStateOf(AdminAlert.repeat(ctx)) }
-    LaunchedEffect(playing) { if (playing) { delay(1900); playing = false } }
+    LaunchedEffect(playing) { if (playing) { delay(5300); playing = false } }
     fun runTest() { AdminAlert.test(ctx); playing = true }
 
     Column(Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 12.dp)) {
