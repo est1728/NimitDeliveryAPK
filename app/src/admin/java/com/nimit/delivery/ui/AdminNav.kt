@@ -133,7 +133,7 @@ fun AdminHome(s: AdminSession, onLogout: () -> Unit) {
                     )
                 } else {
                     Box(Modifier.fillMaxSize().statusBarsPadding(), contentAlignment = Alignment.Center) {
-                        if (tab == 5) AdminSettingsPanel() else Text("หน้า" + AdminMenu[tab] + "อยู่ระหว่างพัฒนา", fontSize = 13.sp, color = C.Subtext)
+                        if (tab == 5) AdminSettingsPanel() else if (tab == 1) AdminHistoryPage(store, onOpen = { openId = it }, onRecalled = { tab = 0 }) else Text("หน้า" + AdminMenu[tab] + "อยู่ระหว่างพัฒนา", fontSize = 13.sp, color = C.Subtext)
                     }
                 }
             }
