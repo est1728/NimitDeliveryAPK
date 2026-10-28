@@ -51,7 +51,8 @@ private val devMain = listOf(
     DevPage("hub", "ศูนย์ข้อมูลเขต", "บอร์ดรวมทุกเขต: จำนวนเขต สถานะ และประวัติของแต่ละเขต กดเข้าดูรายเขตได้"),
     DevPage("fin", "การเงินรวม", "ตารางใหญ่ประวัติการเงินทุกเขต กรองตามเขตและช่วงวันที่"),
     DevPage("audit", "ประวัติการเปลี่ยนแปลง", "บันทึกทุกการเปลี่ยนเขต ผูกเขต และตั้งค่า (ใคร/ทำอะไร/ก่อน→หลัง/เวลา) แก้ไขหรือลบไม่ได้"),
-    DevPage("notif", "แจ้งเตือน", "ทดสอบระบบ push ตามหน้า developer.html เดิม")
+    DevPage("notif", "แจ้งเตือน", "ทดสอบระบบ push ตามหน้า developer.html เดิม"),
+    DevPage("notifcfg", "ตั้งค่าแจ้งเตือน", "ตั้งค่าข้อความแจ้งเตือนของทุกแอป")
 )
 private val devTools = listOf(
     DevPage("deploy", "Deploy", "อัปโหลดไฟล์ขึ้น GitHub"),
@@ -182,7 +183,7 @@ private fun DevMain(email: String, onLogout: () -> Unit) {
                     .verticalScroll(rememberScrollState())
                     .padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 40.dp)
             ) {
-                if (cur == "zones") DevZonesScreen() else if (cur == "notif") DevNotifyScreen() else if (cur == "audit") DevAuditScreen() else DevCard {
+                if (cur == "zones") DevZonesScreen() else if (cur == "notif") DevNotifyScreen() else if (cur == "audit") DevAuditScreen() else if (cur == "notifcfg") DevNotifyConfigScreen() else DevCard {
                     DevSTitle(curPage.title)
                     Text(curPage.desc, fontSize = 13.sp, color = DevC.S, lineHeight = 20.sp)
                     Text("ยังไม่เปิดใช้งานในเวอร์ชันนี้", fontSize = 11.sp, color = DevC.S, modifier = Modifier.padding(top = 8.dp))
