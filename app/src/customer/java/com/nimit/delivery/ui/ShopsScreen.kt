@@ -37,6 +37,19 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.RoundRect
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Outline
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.PathOperation
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -77,7 +90,7 @@ private object ShopsCache {
     var ads: List<Pair<String, Doc>> = emptyList()
     var cats: List<Pair<String, Doc>> = emptyList()
     var flash: List<Pair<String, Doc>> = emptyList()
-    var coupons: Int = 0
+    var coupons: List<HomeCoupon> = emptyList()
     var notif: Int = 0
     var order: Pair<String, Doc>? = null
     var bnr: Doc? = null
@@ -96,7 +109,8 @@ fun ShopsScreen(session: Session, onOpenShop: (String, String) -> Unit, onNaviga
     var ads by remember { mutableStateOf<List<Pair<String, Doc>>>(if (warm) ShopsCache.ads else emptyList()) }
     var cats by remember { mutableStateOf<List<Pair<String, Doc>>>(if (warm) ShopsCache.cats else emptyList()) }
     var flash by remember { mutableStateOf<List<Pair<String, Doc>>>(if (warm) ShopsCache.flash else emptyList()) }
-    var coupons by remember { mutableStateOf(if (warm) ShopsCache.coupons else 0) }
+    var coupons by remember { mutableStateOf<List<HomeCoupon>>(if (warm) ShopsCache.coupons else emptyList()) }
+    var prefer by remember { mutableStateOf(session.preferCoupon) }
     var notif by remember { mutableStateOf(if (warm) ShopsCache.notif else 0) }
     var order by remember { mutableStateOf<Pair<String, Doc>?>(if (warm) ShopsCache.order else null) }
     var bnr by remember { mutableStateOf<Doc?>(if (warm) ShopsCache.bnr else null) }
@@ -133,7 +147,7 @@ fun ShopsScreen(session: Session, onOpenShop: (String, String) -> Unit, onNaviga
         launch { ads = ShopsRepo.ads() }
         launch { cats = ShopsRepo.categoryButtons() }
         launch { flash = ShopsRepo.flashDeals() }
-        launch { coupons = ShopsRepo.couponCount() }
+        launch { coupons = ShopsRepo.homeCoupons(phone) }
         launch { notif = ShopsRepo.unreadNotifs(session.notifLastRead?.toLongOrNull() ?: 0L) }
         launch { order = ShopsRepo.activeOrder(phone) }
         launch { bnr = ShopsRepo.appBanner() }
@@ -191,6 +205,23 @@ fun ShopsScreen(session: Session, onOpenShop: (String, String) -> Unit, onNaviga
         session.favoriteShops = JSONArray(favs.toList()).toString()
     }
 
+    fun couponAct(hc: HomeCoupon) {
+        if (hc.claimId == null) {
+            if (phone.isEmpty()) { Toast.makeText(ctx, "กรุณาเข้าสู่ระบบก่อนเก็บคูปอง", Toast.LENGTH_SHORT).show(); session.loginReturnRoute = "shops"; onNavigate("login"); return }
+            scope.launch {
+                val cid = ShopsRepo.claimCoupon(phone, hc.id)
+                if (cid != null) { coupons = coupons.map { if (it.id == hc.id) HomeCoupon(it.id, it.d, cid) else it }; Toast.makeText(ctx, "เก็บคูปองแล้ว", Toast.LENGTH_SHORT).show() }
+                else Toast.makeText(ctx, "เก็บคูปองไม่สำเร็จ", Toast.LENGTH_SHORT).show()
+            }
+        } else if (prefer != hc.claimId) {
+            session.preferCoupon = hc.claimId; prefer = hc.claimId
+            Toast.makeText(ctx, "จะใช้คูปองนี้ก่อนตอนชำระเงิน", Toast.LENGTH_SHORT).show()
+        } else {
+            session.preferCoupon = null; prefer = null
+            Toast.makeText(ctx, "นำคูปองออกแล้ว", Toast.LENGTH_SHORT).show()
+        }
+    }
+
     val listState = rememberLazyListState()
     val showSticky by remember { derivedStateOf { listState.firstVisibleItemIndex >= 1 } }
 
@@ -213,7 +244,7 @@ fun ShopsScreen(session: Session, onOpenShop: (String, String) -> Unit, onNaviga
     val svcList = remember(svc) { serviceButtons(svc) }
     // ตำแหน่งหัวข้อ "ร้านทั้งหมด" ใน LazyColumn (ไว้ให้ปุ่มสั่งอาหารเลื่อนไป)
     val shopsHdIdx = 2 + (if (order != null) 1 else 0) + (if (ads.isNotEmpty()) 1 else 0) + (if (svcList.isNotEmpty()) 1 else 0) +
-        (if (cats.isNotEmpty()) 1 else 0) + (if (coupons > 0) 1 else 0) + (if (liveFlash.isNotEmpty()) 1 else 0) +
+        (if (cats.isNotEmpty()) 1 else 0) + (if (coupons.isNotEmpty()) 1 else 0) + (if (liveFlash.isNotEmpty()) 1 else 0) +
         (if (popular.isNotEmpty()) 1 else 0) + (if (bnrItems.isNotEmpty()) 1 else 0)
 
     Box(Modifier.fillMaxSize().background(N.Bg)) {
@@ -307,22 +338,9 @@ fun ShopsScreen(session: Session, onOpenShop: (String, String) -> Unit, onNaviga
                         }
                     }
                 }
-                // COUPON PROMO
-                if (coupons > 0) item {
-                    Row(
-                        Modifier.padding(start = 16.dp, end = 16.dp, top = 14.dp).fillMaxWidth().clip(RoundedCornerShape(18.dp))
-                            .background(Brush.linearGradient(listOf(N.B700, N.B900))).clickable { onNavigate("coupon") }
-                            .padding(horizontal = 15.dp, vertical = 14.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Box(Modifier.size(40.dp).clip(RoundedCornerShape(12.dp)).background(Color.White.copy(alpha = 0.18f)), contentAlignment = Alignment.Center) { PathIcon(P.TICKET, Color.White, 20.dp) }
-                        Spacer(Modifier.width(12.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text(if (coupons > 1) "มีคูปองส่วนลด $coupons ใบรอให้เก็บ!" else "มีคูปองส่วนลดรอให้เก็บ!", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                            Text("แตะเพื่อดูคูปองทั้งหมด", fontSize = 11.5.sp, color = Color.White.copy(alpha = 0.8f))
-                        }
-                        PathIcon(P.TRI, Color.White.copy(alpha = 0.7f), 16.dp)
-                    }
+                // COUPON BOX (การ์ดคูปองแบบตั๋ว)
+                if (coupons.isNotEmpty()) item {
+                    CouponBox(coupons, prefer, onAll = { onNavigate("coupon") }, onAct = { hc -> couponAct(hc) })
                 }
                 // FLASH
                 if (liveFlash.isNotEmpty()) item {
@@ -829,5 +847,86 @@ private fun BannerCarousel(items: List<Doc>, sec: Int, onClick: (String) -> Unit
                 Box(Modifier.size(if (i == pager.currentPage) 14.dp else 5.dp, 5.dp).clip(CircleShape).background(Color.White.copy(alpha = if (i == pager.currentPage) 1f else 0.55f)))
             }
         }
+    }
+}
+
+// ---------- การ์ดคูปองแบบตั๋ว (เหมือนเว็บ) ----------
+private class TicketShape(val notchX: Float, val r: Float, val corner: Float) : Shape {
+    override fun createOutline(size: Size, layoutDirection: LayoutDirection, density: Density): Outline {
+        val base = Path().apply { addRoundRect(RoundRect(0f, 0f, size.width, size.height, CornerRadius(corner, corner))) }
+        val holes = Path().apply {
+            addOval(Rect(Offset(notchX - r, -r), Size(r * 2, r * 2)))
+            addOval(Rect(Offset(notchX - r, size.height - r), Size(r * 2, r * 2)))
+        }
+        return Outline.Generic(Path.combine(PathOperation.Difference, base, holes))
+    }
+}
+
+private fun noEmoji(t: String): String = t.filter { ch -> !Character.isSurrogate(ch) && Character.getType(ch) != Character.OTHER_SYMBOL.toInt() }.trim()
+
+@Composable
+private fun CouponBox(list: List<HomeCoupon>, prefer: String?, onAll: () -> Unit, onAct: (HomeCoupon) -> Unit) {
+    val shape = RoundedCornerShape(20.dp)
+    Column(
+        Modifier.padding(start = 16.dp, end = 16.dp, top = 14.dp).fillMaxWidth().clip(shape)
+            .background(Brush.linearGradient(listOf(Color(0xFFE7EFFC), Color(0xFFF4F8FE), Color.White)))
+            .border(1.dp, Color(0xFFD3E1FA), shape).padding(top = 12.dp, bottom = 6.dp)
+    ) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp).padding(bottom = 6.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Box(Modifier.size(26.dp).clip(RoundedCornerShape(9.dp)).background(N.B700), contentAlignment = Alignment.Center) { PathIcon(P.TICKET, Color.White, 15.dp) }
+                Text("คูปองของคุณ (${list.size})", fontSize = 14.5.sp, fontWeight = FontWeight.Bold, color = N.B900)
+            }
+            Row(Modifier.clip(RoundedCornerShape(12.dp)).background(Color.White).clickable { onAll() }.padding(start = 10.dp, end = 6.dp, top = 4.dp, bottom = 4.dp),
+                verticalAlignment = Alignment.CenterVertically) {
+                Text("ดูทั้งหมด", fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = N.B700)
+                PathIcon(P.CHEVRON, N.B700, 13.dp)
+            }
+        }
+        LazyRow(contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 6.dp, bottom = 10.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            items(list, key = { it.id }) { hc -> CouponTicket(hc, picked = hc.claimId != null && hc.claimId == prefer, onAct = { onAct(hc) }) }
+        }
+    }
+}
+
+@Composable
+private fun CouponTicket(hc: HomeCoupon, picked: Boolean, onAct: () -> Unit) {
+    val c = hc.d
+    val dens = androidx.compose.ui.platform.LocalDensity.current
+    val shape = remember(dens) { TicketShape(with(dens) { 80.dp.toPx() }, with(dens) { 6.dp.toPx() }, with(dens) { 12.dp.toPx() }) }
+    val type = c.str("type")
+    val big = when (type) { "percent" -> "${fmt(c.dbl("value") ?: 0.0)}%"; "fixed" -> "฿${fmt(c.dbl("value") ?: 0.0)}"; else -> "ส่งฟรี" }
+    val sub = if (type == "freeship") "FREE SHIP" else "DISCOUNT"
+    val end = remember(c) { java.text.SimpleDateFormat("d MMM yy", java.util.Locale("th", "TH")).format(java.util.Date(c.lng("endAt") ?: 0L)) }
+    val min = c.dbl("minOrderAmount") ?: 0.0
+    val meta = (if (min > 0) "ขั้นต่ำ ฿${fmt(min)} · " else "") + (if (c.str("shopId").isNotEmpty()) c.str("shopName").ifEmpty { "ร้านเฉพาะ" } else "ใช้ได้ทุกร้าน")
+    val btn = when { hc.claimId == null -> "เก็บ"; picked -> "นำออก"; else -> "ใช้" }
+    val dash = Color(0xFFC7D6F3)
+    Row(
+        Modifier.width(252.dp).height(66.dp).clip(shape).background(Color.White)
+            .then(if (picked) Modifier.border(2.dp, N.B600, shape) else Modifier.border(1.dp, N.Line, shape)),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(
+            Modifier.width(80.dp).fillMaxHeight().drawBehind {
+                drawLine(dash, Offset(size.width, 8.dp.toPx()), Offset(size.width, size.height - 8.dp.toPx()), strokeWidth = 1.5.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(8f, 6f)))
+            },
+            horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center
+        ) {
+            Text(big, fontSize = 21.sp, lineHeight = 21.sp, fontWeight = FontWeight.Black, color = N.B700, maxLines = 1)
+            Text(sub, fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Color(0xFF64748B), modifier = Modifier.padding(top = 3.dp))
+        }
+        Column(Modifier.weight(1f).padding(start = 12.dp, end = 4.dp, top = 8.dp, bottom = 8.dp), verticalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterVertically)) {
+            Text(noEmoji(c.str("title")).ifEmpty { big }, fontSize = 12.sp, fontWeight = FontWeight.ExtraBold, color = N.B900, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(meta, fontSize = 10.sp, color = Color(0xFF64748B), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text("หมดเขต $end", fontSize = 10.sp, color = Color(0xFFC2410C), maxLines = 1)
+        }
+        val pill = when (btn) { "เก็บ" -> N.B700 to Color.White; "ใช้" -> Color.White to N.B700; else -> Color(0xFFEEF2F9) to Color(0xFF64748B) }
+        Box(
+            Modifier.padding(start = 2.dp, end = 8.dp).height(24.dp).clip(RoundedCornerShape(14.dp)).background(pill.first)
+                .border(1.5.dp, if (btn == "นำออก") Color(0xFFEEF2F9) else N.B700, RoundedCornerShape(14.dp))
+                .clickable { onAct() }.padding(horizontal = 11.dp),
+            contentAlignment = Alignment.Center
+        ) { Text(btn, fontSize = 11.sp, fontWeight = FontWeight.ExtraBold, color = pill.second, maxLines = 1) }
     }
 }

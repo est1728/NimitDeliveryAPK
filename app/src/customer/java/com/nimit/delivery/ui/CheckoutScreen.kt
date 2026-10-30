@@ -167,6 +167,12 @@ fun CheckoutScreen(session: Session, onBack: () -> Unit, onAddress: () -> Unit, 
                 }.awaitAll().toMap()
             }
             coupons = couponJob.await()
+            val pc = session.preferCoupon
+            if (pc != null) {
+                val m = coupons.firstOrNull { it.str("claimId") == pc }
+                if (m != null) picked = m else session.preferCoupon = null
+            }
+            Unit
         }
     }
 

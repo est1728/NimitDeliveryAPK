@@ -63,6 +63,8 @@ class Shop(val id: String, val d: Doc) {
     }
 }
 
+class HomeCoupon(val id: String, val d: Doc, val claimId: String?)
+
 class ZoneResult(val franchiseId: String, val inside: Boolean, val dist: Double)
 
 object ShopsRepo {
@@ -111,6 +113,28 @@ object ShopsRepo {
         val now = System.currentTimeMillis()
         all("coupons").count { it.second["active"] != false && (it.second.lng("endAt") ?: 0L) > now }
     } catch (_: Exception) { 0 }
+
+    /** คูปองที่ยังไม่หมดเขต + สถานะที่ลูกค้าเก็บแล้ว (ตัดใบที่ใช้ไปแล้ว) เรียงใกล้หมดเขตก่อน */
+    suspend fun homeCoupons(phone: String?): List<HomeCoupon> = try {
+        val now = System.currentTimeMillis()
+        val list = all("coupons").filter { it.second["active"] != false && (it.second.lng("endAt") ?: 0L) > now }
+        val claims = HashMap<String, Pair<String, Boolean>>()
+        if (!phone.isNullOrEmpty()) try {
+            db.collection("claimedCoupons").whereEqualTo("phone", phone).get().await().documents.forEach { d ->
+                val cid = d.getString("couponId") ?: return@forEach
+                val used = d.getBoolean("used") == true
+                val cur = claims[cid]
+                if (cur == null || (cur.second && !used)) claims[cid] = d.id to used
+            }
+        } catch (_: Exception) {}
+        list.mapNotNull { (id, d) -> val cl = claims[id]; if (cl != null && cl.second) null else HomeCoupon(id, d, cl?.first) }
+            .sortedBy { it.d.lng("endAt") ?: 0L }
+    } catch (_: Exception) { emptyList() }
+
+    /** เก็บคูปอง → คืน claimId (null = ไม่สำเร็จ) */
+    suspend fun claimCoupon(phone: String, couponId: String): String? = try {
+        db.collection("claimedCoupons").add(mapOf("phone" to phone, "couponId" to couponId, "claimedAt" to com.google.firebase.firestore.FieldValue.serverTimestamp(), "used" to false)).await().id
+    } catch (_: Exception) { null }
 
     suspend fun unreadNotifs(lastRead: Long): Int = try {
         db.collection("notifications").get().await().documents.count {
