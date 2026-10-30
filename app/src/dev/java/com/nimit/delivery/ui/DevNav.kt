@@ -183,7 +183,7 @@ private fun DevMain(email: String, onLogout: () -> Unit) {
                     .verticalScroll(rememberScrollState())
                     .padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 40.dp)
             ) {
-                if (cur == "zones") DevZonesScreen() else if (cur == "notif") DevNotifyScreen() else if (cur == "audit") DevAuditScreen() else if (cur == "notifcfg") DevNotifyConfigScreen() else DevCard {
+                if (cur == "zones") DevZonesScreen() else if (cur == "notif") DevNotifyScreen() else if (cur == "audit") DevAuditScreen() else if (cur == "notifcfg") DevNotifyConfigScreen() else if (cur == "hub") DevHubScreen() else if (cur == "fin") DevFinanceScreen() else DevCard {
                     DevSTitle(curPage.title)
                     Text(curPage.desc, fontSize = 13.sp, color = DevC.S, lineHeight = 20.sp)
                     Text("ยังไม่เปิดใช้งานในเวอร์ชันนี้", fontSize = 11.sp, color = DevC.S, modifier = Modifier.padding(top = 8.dp))
