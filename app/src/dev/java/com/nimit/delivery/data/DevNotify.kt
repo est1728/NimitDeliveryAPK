@@ -33,7 +33,8 @@ data class DevBroadcast(
     val nextRunMillis: Long,
     val status: String,
     val lastRunMillis: Long,
-    val lastResult: String
+    val lastResult: String,
+    val category: String
 )
 
 // ส่งแจ้งเตือนผ่านเซิร์ฟเวอร์เดิม: ใช้รูปแบบเดียวกับหน้าทดสอบเดิม (tokens, title, body, url)
@@ -226,7 +227,8 @@ object DevNotify {
 
     suspend fun saveBroadcast(
         role: String, scope: String, zoneId: String, zoneName: String, person: String,
-        title: String, body: String, repeat: String, runAtMillis: Long, timeOfDay: String
+        title: String, body: String, repeat: String, runAtMillis: Long, timeOfDay: String,
+        category: String = ""
     ): String? {
         val email = DevRepo.currentEmail() ?: return "ยังไม่ได้เข้าสู่ระบบ"
         val m = hashMapOf<String, Any>(
@@ -239,6 +241,7 @@ object DevNotify {
             "person" to person.trim(),
             "repeat" to repeat,
             "timeOfDay" to timeOfDay,
+            "category" to category,
             "status" to "active",
             "createdBy" to email,
             "createdAt" to FieldValue.serverTimestamp()
@@ -272,7 +275,8 @@ object DevNotify {
                 nextRunMillis = d.getTimestamp("nextRunAt")?.toDate()?.time ?: 0L,
                 status = d.getString("status") ?: "active",
                 lastRunMillis = d.getTimestamp("lastRunAt")?.toDate()?.time ?: 0L,
-                lastResult = d.getString("lastResult") ?: ""
+                lastResult = d.getString("lastResult") ?: "",
+                category = d.getString("category") ?: ""
             )
         }
     }

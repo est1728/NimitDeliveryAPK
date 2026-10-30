@@ -40,6 +40,7 @@ import androidx.compose.ui.unit.sp
 import com.nimit.delivery.data.DevBroadcast
 import com.nimit.delivery.data.DevFranchise
 import com.nimit.delivery.data.DevNotify
+import com.nimit.delivery.data.DevNotifyCat
 import com.nimit.delivery.data.DevRepo
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
@@ -106,6 +107,11 @@ fun DevNotifyScreen() {
     var blist by remember { mutableStateOf<List<DevBroadcast>?>(null) }
     var bTick by remember { mutableStateOf(0) }
     var delTarget by remember { mutableStateOf<DevBroadcast?>(null) }
+    var category by remember { mutableStateOf("") }
+    var cats by remember { mutableStateOf<List<String>>(emptyList()) }
+    var showCatManage by remember { mutableStateOf(false) }
+    var catSend by remember { mutableStateOf<String?>(null) }
+    var moveCatTarget by remember { mutableStateOf<DevBroadcast?>(null) }
     val cs = rememberCoroutineScope()
 
     LaunchedEffect(sc) {
@@ -123,6 +129,12 @@ fun DevNotifyScreen() {
     LaunchedEffect(bTick) {
         try {
             blist = DevNotify.listBroadcasts()
+            try {
+                cats = DevNotifyCat.load()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+            }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -176,7 +188,7 @@ fun DevNotifyScreen() {
             val zn = zones.firstOrNull { it.id == c.spec.zoneId }?.name ?: ""
             val err = DevNotify.saveBroadcast(
                 c.spec.role, c.spec.scope, c.spec.zoneId, zn, c.spec.person,
-                c.spec.title, c.spec.body, c.plan, c.runAt, c.timeOfDay
+                c.spec.title, c.spec.body, c.plan, c.runAt, c.timeOfDay, category
             )
             busy = false
             if (err == null) {
@@ -351,6 +363,16 @@ fun DevNotifyScreen() {
                 )
             }
         }
+        if (real && plan != "now") {
+            DevNLabel("หมวดหมู่ (ไม่บังคับ)")
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.horizontalScroll(rememberScrollState()).padding(bottom = 12.dp)
+            ) {
+                DevChip("ไม่มีหมวด", category.isEmpty(), true, DevC.S) { category = "" }
+                cats.forEach { c0 -> DevChip(c0, category == c0, true, DevC.P) { category = c0 } }
+            }
+        }
         Box(
             Modifier
                 .fillMaxWidth()
@@ -384,19 +406,72 @@ fun DevNotifyScreen() {
     }
 
     val bl = blist
-    Text(
-        if (bl == null) "ข้อความที่ตั้งไว้" else "ข้อความที่ตั้งไว้ (" + bl.size + ")",
-        fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, color = DevC.T,
-        modifier = Modifier.padding(top = 8.dp, bottom = 10.dp)
-    )
+    Row(Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            if (bl == null) "ข้อความที่ตั้งไว้" else "ข้อความที่ตั้งไว้ (" + bl.size + ")",
+            fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, color = DevC.T, modifier = Modifier.weight(1f)
+        )
+        Text(
+            "จัดการหมวดหมู่", fontSize = 12.5.sp, fontWeight = FontWeight.ExtraBold, color = DevC.P,
+            modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable { showCatManage = true }.padding(horizontal = 8.dp, vertical = 6.dp)
+        )
+    }
     if (bl == null) {
         DevCard { Text("กำลังโหลด...", fontSize = 13.sp, color = DevC.S) }
     } else if (bl.isEmpty()) {
         DevCard { Text("ยังไม่มีข้อความที่ตั้งเวลาหรือบันทึกไว้", fontSize = 13.sp, color = DevC.S) }
     } else {
-        bl.forEach { b ->
-            DevBroadcastCard(b, busy, { sendSaved(b) }, { togglePause(b) }, { delTarget = b })
+        // แยกตามหมวด: หมวดที่สร้างไว้ก่อน แล้วค่อย "ไม่มีหมวด" (รวมข้อความที่หมวดถูกลบไปแล้ว)
+        (cats + listOf("")).forEach { g ->
+            val inGroup = bl.filter { if (g.isEmpty()) (it.category.isEmpty() || it.category !in cats) else it.category == g }
+            if (g.isNotEmpty() || inGroup.isNotEmpty()) {
+                Row(Modifier.fillMaxWidth().padding(top = 6.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        (if (g.isEmpty()) "ไม่มีหมวด" else g) + " (" + inGroup.size + ")",
+                        fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = DevC.P, modifier = Modifier.weight(1f)
+                    )
+                    if (g.isNotEmpty() && inGroup.isNotEmpty()) {
+                        Text(
+                            "ส่งทั้งหมวด", fontSize = 12.sp, fontWeight = FontWeight.ExtraBold, color = Color.White,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(20.dp))
+                                .background(DevC.R)
+                                .clickable(enabled = !busy) { catSend = g }
+                                .padding(horizontal = 12.dp, vertical = 6.dp)
+                        )
+                    }
+                }
+                if (inGroup.isEmpty()) DevCard { Text("หมวดนี้ยังไม่มีข้อความ", fontSize = 12.sp, color = DevC.S) }
+                inGroup.forEach { b ->
+                    DevBroadcastCard(b, busy, { sendSaved(b) }, { togglePause(b) }, { delTarget = b }, { moveCatTarget = b })
+                }
+            }
         }
+    }
+
+    if (showCatManage) {
+        DevCategoryManageDialog(cats, blist ?: emptyList(), { showCatManage = false }, { bTick++ })
+    }
+    val cSend = catSend
+    if (cSend != null && bl != null) {
+        DevCategorySendDialog(
+            category = cSend,
+            items = bl.filter { it.category == cSend },
+            onDismiss = { catSend = null },
+            onDone = { text ->
+                catSend = null
+                result = text
+                resultOk = true
+                bTick++
+            }
+        )
+    }
+    val mvc = moveCatTarget
+    if (mvc != null) {
+        DevMoveCategoryDialog(mvc, cats, { moveCatTarget = null }, {
+            moveCatTarget = null
+            bTick++
+        })
     }
 
     val c = confirm
@@ -458,7 +533,8 @@ private fun DevBroadcastCard(
     busy: Boolean,
     onSend: () -> Unit,
     onToggle: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    onMoveCat: () -> Unit
 ) {
     val who = devRoleLabel(b.role) + " · " + devScopeLabel(b.scope) +
         (if (b.scope == "zone" && b.zoneName.isNotEmpty()) " " + b.zoneName else "")
@@ -500,6 +576,10 @@ private fun DevBroadcastCard(
                     modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable(enabled = !busy) { onToggle() }.padding(horizontal = 8.dp, vertical = 6.dp)
                 )
             }
+            Text(
+                "ย้ายหมวด", fontSize = 12.5.sp, fontWeight = FontWeight.Bold, color = DevC.S,
+                modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable(enabled = !busy) { onMoveCat() }.padding(horizontal = 8.dp, vertical = 6.dp)
+            )
             Text(
                 "ลบ", fontSize = 12.5.sp, fontWeight = FontWeight.Bold, color = DevC.R,
                 modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable(enabled = !busy) { onDelete() }.padding(horizontal = 8.dp, vertical = 6.dp)
