@@ -103,6 +103,7 @@ object ShopsRepo {
     suspend fun ads() = try { all("ads").filter { it.second["active"] != false }.sortedBy { it.second.dbl("order") ?: 0.0 } } catch (_: Exception) { emptyList() }
     suspend fun categoryButtons() = try { all("categoryButtons").sortedBy { it.second.dbl("order") ?: 0.0 } } catch (_: Exception) { emptyList() }
     suspend fun appBanner(): Doc? = try { db.collection("settings").document("appBanner").get().await().data } catch (_: Exception) { null }
+    suspend fun popupCfg(): Doc? = try { db.collection("settings").document("popup").get().await().data } catch (_: Exception) { null }
     suspend fun homeButtons(): Doc? = try { db.collection("settings").document("homeButtons").get().await().data } catch (_: Exception) { null }
     suspend fun flashDeals(): List<Pair<String, Doc>> = try {
         val now = System.currentTimeMillis()

@@ -32,6 +32,8 @@ class Session(ctx: Context) {
     var cardStyle: String get() = get("cardStyle") ?: "ring"; set(v) = set("cardStyle", v)
     /** claimId ของคูปองที่ลูกค้ากด "ใช้" ไว้ (หน้าชำระเงินจะเลือกให้เอง) */
     var preferCoupon: String? get() = get("preferCoupon"); set(v) = set("preferCoupon", v)
+    var popupSeen: String? get() = get("popupSeen"); set(v) = set("popupSeen", v)
+    var popupSkip: String? get() = get("popupSkip"); set(v) = set("popupSkip", v)
     var selectedShopId: String? get() = get("selectedShopId"); set(v) = set("selectedShopId", v)
     var selectedShopName: String? get() = get("selectedShopName"); set(v) = set("selectedShopName", v)
 

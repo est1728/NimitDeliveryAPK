@@ -116,6 +116,7 @@ fun ShopsScreen(session: Session, onOpenShop: (String, String) -> Unit, onNaviga
     var bnr by remember { mutableStateOf<Doc?>(if (warm) ShopsCache.bnr else null) }
     var svc by remember { mutableStateOf<Doc?>(if (warm) ShopsCache.svc else null) }
     var loading by remember { mutableStateOf(!warm) }
+    var popup by remember { mutableStateOf<Doc?>(null) }
     androidx.compose.runtime.SideEffect {
         if (shops.isNotEmpty()) {
             ShopsCache.owner = session.customerPhone.orEmpty()
@@ -174,6 +175,10 @@ fun ShopsScreen(session: Session, onOpenShop: (String, String) -> Unit, onNaviga
         }
     }
     LaunchedEffect(Unit) { loadAll() }
+    LaunchedEffect(Unit) {
+        val pc = ShopsRepo.popupCfg()
+        if (pc != null && popupDue(pc, session)) { popup = pc; popupMarkShown(pc, session) }
+    }
     LaunchedEffect(Unit) { while (true) { delay(60_000); minuteTick++ } }
 
     fun pick(id: String, name: String) { onOpenShop(id, name) }
@@ -504,6 +509,9 @@ fun ShopsScreen(session: Session, onOpenShop: (String, String) -> Unit, onNaviga
                 }
             }
         }
+
+        // POPUP (settings/popup)
+        popup?.let { pc -> HomePopup(pc, onDismiss = { popup = null }, onSkip = { popupSkipToday(pc, session); popup = null }, onLink = { openLink(it, "") }) }
 
         // ZONE OUT
         if (zoneOut) Dialog(onDismissRequest = { zoneOut = false }) {
