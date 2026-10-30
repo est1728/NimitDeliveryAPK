@@ -80,6 +80,8 @@ private object ShopsCache {
     var coupons: Int = 0
     var notif: Int = 0
     var order: Pair<String, Doc>? = null
+    var bnr: Doc? = null
+    var svc: Doc? = null
 }
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
@@ -97,12 +99,15 @@ fun ShopsScreen(session: Session, onOpenShop: (String, String) -> Unit, onNaviga
     var coupons by remember { mutableStateOf(if (warm) ShopsCache.coupons else 0) }
     var notif by remember { mutableStateOf(if (warm) ShopsCache.notif else 0) }
     var order by remember { mutableStateOf<Pair<String, Doc>?>(if (warm) ShopsCache.order else null) }
+    var bnr by remember { mutableStateOf<Doc?>(if (warm) ShopsCache.bnr else null) }
+    var svc by remember { mutableStateOf<Doc?>(if (warm) ShopsCache.svc else null) }
     var loading by remember { mutableStateOf(!warm) }
     androidx.compose.runtime.SideEffect {
         if (shops.isNotEmpty()) {
             ShopsCache.owner = session.customerPhone.orEmpty()
             ShopsCache.shops = shops; ShopsCache.ads = ads; ShopsCache.cats = cats; ShopsCache.flash = flash
             ShopsCache.coupons = coupons; ShopsCache.notif = notif; ShopsCache.order = order
+            ShopsCache.bnr = bnr; ShopsCache.svc = svc
         }
     }
     var refreshing by remember { mutableStateOf(false) }
@@ -131,6 +136,8 @@ fun ShopsScreen(session: Session, onOpenShop: (String, String) -> Unit, onNaviga
         launch { coupons = ShopsRepo.couponCount() }
         launch { notif = ShopsRepo.unreadNotifs(session.notifLastRead?.toLongOrNull() ?: 0L) }
         launch { order = ShopsRepo.activeOrder(phone) }
+        launch { bnr = ShopsRepo.appBanner() }
+        launch { svc = ShopsRepo.homeButtons() }
         launch {
             ShopsRepo.refreshCustomer(session)
             val (list, zone) = ShopsRepo.shops(session)
@@ -202,6 +209,13 @@ fun ShopsScreen(session: Session, onOpenShop: (String, String) -> Unit, onNaviga
     val popular = remember(shops, minuteTick) { shops.filter { it.openNow() }.sortedByDescending { it.score }.take(5) }
     val liveFlash = remember(flash, minuteTick) { flash.filter { (it.second.lng("endAt") ?: 0L) > System.currentTimeMillis() } }
 
+    val bnrItems = remember(bnr) { bannerItems(bnr) }
+    val svcList = remember(svc) { serviceButtons(svc) }
+    // ตำแหน่งหัวข้อ "ร้านทั้งหมด" ใน LazyColumn (ไว้ให้ปุ่มสั่งอาหารเลื่อนไป)
+    val shopsHdIdx = 2 + (if (order != null) 1 else 0) + (if (ads.isNotEmpty()) 1 else 0) + (if (svcList.isNotEmpty()) 1 else 0) +
+        (if (cats.isNotEmpty()) 1 else 0) + (if (coupons > 0) 1 else 0) + (if (liveFlash.isNotEmpty()) 1 else 0) +
+        (if (popular.isNotEmpty()) 1 else 0) + (if (bnrItems.isNotEmpty()) 1 else 0)
+
     Box(Modifier.fillMaxSize().background(N.Bg)) {
         PullToRefreshBox(
             isRefreshing = refreshing,
@@ -242,8 +256,6 @@ fun ShopsScreen(session: Session, onOpenShop: (String, String) -> Unit, onNaviga
                         SearchBox { onNavigate("search") }
                     }
                 }
-                // ADS
-                if (ads.isNotEmpty()) item { AdsPager(ads, ::pick) { openLink(it, "") } }
                 // ACTIVE ORDER
                 order?.let { (id, o) ->
                     item {
@@ -267,6 +279,31 @@ fun ShopsScreen(session: Session, onOpenShop: (String, String) -> Unit, onNaviga
                                 Text(ShopsRepo.statusLabel[o.str("status")] ?: o.str("status"), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
                             }
                             OrderProgress(idx, ShopsRepo.activeStatuses.size)
+                        }
+                    }
+                }
+                // ADS
+                if (ads.isNotEmpty()) item { AdsPager(ads, ::pick) { openLink(it, "") } }
+                // SERVICE BUTTONS (settings/homeButtons)
+                if (svcList.isNotEmpty()) item {
+                    ServiceButtons(svcList, svc,
+                        onFood = { scope.launch { listState.animateScrollToItem(shopsHdIdx) } },
+                        onSoon = { Toast.makeText(ctx, "บริการนี้เร็วๆ นี้ — รอติดตามนะ", Toast.LENGTH_SHORT).show() })
+                }
+                // CATEGORIES
+                if (cats.isNotEmpty()) item {
+                    SectionTitle("หมวดหมู่สินค้า", top = 18)
+                    LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(15.dp)) {
+                        items(cats) { (id, b) ->
+                            Column(Modifier.width(60.dp).clickable {
+                                openLink(b.str("destPage").ifEmpty { "category.html" }, id)
+                            }, horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Box(Modifier.size(52.dp).clip(CircleShape).background(Color.White).border(1.dp, N.Line, CircleShape), contentAlignment = Alignment.Center) {
+                                    if (b.str("iconType") == "custom" && b.str("iconUrl").isNotEmpty()) AsyncImage(b.str("iconUrl"), null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                                    else PathIcon(P.presets[b.str("iconPreset")] ?: P.GRID, N.B700, 24.dp)
+                                }
+                                Text(b.str("name"), fontSize = 10.5.sp, fontWeight = FontWeight.SemiBold, color = N.Ink700, textAlign = TextAlign.Center, lineHeight = 13.sp)
+                            }
                         }
                     }
                 }
@@ -327,35 +364,24 @@ fun ShopsScreen(session: Session, onOpenShop: (String, String) -> Unit, onNaviga
                     SectionTitle("ร้านแนะนำ", top = 18)
                     LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(11.dp)) {
                         items(popular) { s ->
-                            Column(Modifier.width(150.dp).clip(RoundedCornerShape(14.dp)).background(Color.White).border(1.dp, N.Line, RoundedCornerShape(14.dp)).clickable { pick(s.id, s.name) }) {
-                                Box(Modifier.fillMaxWidth().height(96.dp).background(N.B50)) {
+                            Column(Modifier.width(132.dp).clip(RoundedCornerShape(14.dp)).background(Color.White).border(1.dp, N.Line, RoundedCornerShape(14.dp)).clickable { pick(s.id, s.name) }) {
+                                Box(Modifier.fillMaxWidth().height(78.dp).background(N.B50), contentAlignment = Alignment.Center) {
                                     if (s.bannerUrl.isNotEmpty()) AsyncImage(s.bannerUrl, null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                                    else PathIcon(P.RESTAURANT, N.B500.copy(alpha = 0.35f), 30.dp)
                                 }
-                                Column(Modifier.padding(10.dp)) {
-                                    Text(s.name, fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold, color = N.Ink900, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                    Text("⭐ %.1f · %s นาที%s".format(s.rating, s.deliveryTime, distTxt(s)), fontSize = 10.5.sp, color = N.Ink500, modifier = Modifier.padding(top = 3.dp))
+                                Column(Modifier.padding(9.dp)) {
+                                    Text(s.name, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = N.Ink900, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    Row(Modifier.padding(top = 3.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                                        PathIcon(P.STAR, Color(0xFFF2A93C), 12.dp)
+                                        Text("%.1f · %s นาที%s".format(s.rating, s.deliveryTime, distTxt(s)), fontSize = 10.sp, color = N.Ink500, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    }
                                 }
                             }
                         }
                     }
                 }
-                // CATEGORIES
-                if (cats.isNotEmpty()) item {
-                    SectionTitle("หมวดหมู่สินค้า", top = 18)
-                    LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(15.dp)) {
-                        items(cats) { (id, b) ->
-                            Column(Modifier.width(60.dp).clickable {
-                                openLink(b.str("destPage").ifEmpty { "category.html" }, id)
-                            }, horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                Box(Modifier.size(52.dp).clip(CircleShape).background(Color.White).border(1.dp, N.Line, CircleShape), contentAlignment = Alignment.Center) {
-                                    if (b.str("iconType") == "custom" && b.str("iconUrl").isNotEmpty()) AsyncImage(b.str("iconUrl"), null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
-                                    else PathIcon(P.presets[b.str("iconPreset")] ?: P.GRID, N.B700, 24.dp)
-                                }
-                                Text(b.str("name"), fontSize = 10.5.sp, fontWeight = FontWeight.SemiBold, color = N.Ink700, textAlign = TextAlign.Center, lineHeight = 13.sp)
-                            }
-                        }
-                    }
-                }
+                // APP BANNER (settings/appBanner)
+                if (bnrItems.isNotEmpty()) item { BannerCarousel(bnrItems, (bnr?.dbl("sec") ?: 4.0).toInt()) { openLink(it, "") } }
                 // FILTERS
                 item {
                     LazyRow(Modifier.padding(top = 16.dp), contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -364,7 +390,7 @@ fun ShopsScreen(session: Session, onOpenShop: (String, String) -> Unit, onNaviga
                             Row(
                                 Modifier.clip(RoundedCornerShape(20.dp)).background(if (on) N.B700 else Color.White)
                                     .border(1.dp, if (on) N.B700 else N.Line, RoundedCornerShape(20.dp))
-                                    .clickable { filters = if (on) filters - key else filters + key }.padding(horizontal = 13.dp, vertical = 7.dp),
+                                    .clickable { filters = if (on && key != "rec") setOf("rec") else setOf(key) }.padding(horizontal = 13.dp, vertical = 7.dp),
                                 verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)
                             ) {
                                 PathIcon(icon, if (on) Color.White else N.Ink700, 14.dp, stroke = key == "fav" || key == "near")
@@ -597,6 +623,7 @@ private fun ShopCard(s: Shop, open: Boolean, fav: Boolean, onClick: () -> Unit, 
     ) {
         Box(Modifier.fillMaxWidth().height(104.dp).background(N.B50)) {
             if (s.bannerUrl.isNotEmpty()) AsyncImage(s.bannerUrl, null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+            else Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { PathIcon(P.RESTAURANT, N.B500.copy(alpha = 0.3f), 44.dp) }
             if (badge != null) Text(BADGE_LABEL[badge] ?: "", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.White,
                 modifier = Modifier.align(Alignment.TopStart).padding(9.dp).clip(RoundedCornerShape(8.dp)).background(BADGE_COLOR[badge] ?: N.B700).padding(horizontal = 9.dp, vertical = 4.dp))
             Text(if (open) "เปิด" else "ปิด", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = if (open) N.Green600 else N.Red500,
@@ -728,5 +755,79 @@ private fun OrderProgress(idx: Int, n: Int) {
             }.size(riderW, 24.dp).graphicsLayer { scaleX = -1f },
             contentAlignment = Alignment.Center
         ) { Text("\uD83D\uDEF5", fontSize = 20.sp) }
+    }
+}
+
+// ---------- หน้าแรก v2: ปุ่มบริการ + แบนเนอร์หลายรูป (ตั้งค่าจากแอดมิน/ผู้พัฒนา) ----------
+private class SvcDef(val k: String, val title: String, val sub: String, val path: String, val bg: Color, val fg: Color, val def: String)
+private const val SVC_CAR = "M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.21.42-1.42 1.01L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99zM6.5 16c-.83 0-1.5-.67-1.5-1.5S5.67 13 6.5 13s1.5.67 1.5 1.5S7.33 16 6.5 16zm11 0c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zM5 11l1.5-4.5h11L19 11H5z"
+private const val SVC_TRUCK = "M20 8h-3V4H3c-1.1 0-2 .9-2 2v11h2c0 1.66 1.34 3 3 3s3-1.34 3-3h6c0 1.66 1.34 3 3 3s3-1.34 3-3h2v-5l-3-4zM6 18.5c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zm13.5-9l1.96 2.5H17V9.5h2.5zm-1.5 9c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5z"
+private val SVC_DEF = listOf(
+    SvcDef("food", "สั่งอาหาร", "ร้านใกล้คุณ", P.RESTAURANT, Color(0xFFFFF1E0), Color(0xFFE8772E), "on"),
+    SvcDef("ride", "เรียกรถ", "รับส่งคน", SVC_CAR, Color(0xFFE3F0FF), N.B600, "soon"),
+    SvcDef("send", "ฝากซื้อ/ส่งของ", "ให้ไรเดอร์ช่วย", SVC_TRUCK, Color(0xFFE6F7EC), Color(0xFF15803D), "soon")
+)
+
+// สถานะปุ่ม: on เปิด / soon เร็วๆ นี้ / off ซ่อน (ค่าเริ่มต้นเหมือนเว็บ)
+private fun svcState(cfg: Doc?, b: SvcDef): String = cfg?.str(b.k)?.takeIf { it == "on" || it == "soon" || it == "off" } ?: b.def
+private fun serviceButtons(cfg: Doc?): List<SvcDef> = SVC_DEF.filter { svcState(cfg, it) != "off" }
+
+@Composable
+private fun ServiceButtons(list: List<SvcDef>, cfg: Doc?, onFood: () -> Unit, onSoon: () -> Unit) {
+    val shape = RoundedCornerShape(18.dp)
+    Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 14.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        list.forEach { b ->
+            val soon = svcState(cfg, b) == "soon"
+            Box(Modifier.weight(1f)) {
+                Column(
+                    Modifier.fillMaxWidth().alpha(if (soon) 0.55f else 1f).shadow(2.dp, shape).clip(shape).background(Color.White)
+                        .border(1.dp, N.Line, shape).clickable { if (soon) onSoon() else onFood() }
+                        .padding(start = 6.dp, end = 6.dp, top = 12.dp, bottom = 10.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Box(Modifier.size(46.dp).clip(RoundedCornerShape(14.dp)).background(b.bg), contentAlignment = Alignment.Center) { PathIcon(b.path, b.fg, 26.dp) }
+                    Text(b.title, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = N.B900, maxLines = 1, modifier = Modifier.padding(top = 6.dp))
+                    Text(b.sub, fontSize = 10.5.sp, color = Color(0xFF64748B), maxLines = 1)
+                }
+                if (soon) Text("เร็วๆ นี้", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.White,
+                    modifier = Modifier.align(Alignment.TopEnd).offset(x = (-8).dp, y = (-7).dp).clip(RoundedCornerShape(8.dp)).background(Color(0xFFF59E0B)).padding(horizontal = 7.dp, vertical = 1.dp))
+            }
+        }
+    }
+}
+
+// รายการแบนเนอร์จาก settings/appBanner {on, sec, items[{imgUrl,title,sub,linkUrl,imgOnly}]} (รองรับรูปแบบเก่าที่เป็นรูปเดียว)
+private fun bannerItems(b: Doc?): List<Doc> {
+    if (b == null || !truthy(b["on"])) return emptyList()
+    val raw = b["items"] as? List<*>
+    val l: List<Doc> = if (raw != null) raw.mapNotNull { x -> (x as? Map<*, *>)?.entries?.associate { e -> e.key.toString() to e.value } }
+    else if (b.str("imgUrl").isNotEmpty() || b.str("title").isNotEmpty()) listOf(b) else emptyList()
+    return l.filter { it.str("imgUrl").isNotEmpty() || it.str("title").isNotEmpty() }
+}
+
+@Composable
+private fun BannerCarousel(items: List<Doc>, sec: Int, onClick: (String) -> Unit) {
+    val pager = rememberPagerState(pageCount = { items.size })
+    LaunchedEffect(items.size, sec) { while (items.size > 1) { delay(sec.coerceIn(2, 15) * 1000L); pager.animateScrollToPage((pager.currentPage + 1) % items.size) } }
+    val shape = RoundedCornerShape(18.dp)
+    Box(Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp).fillMaxWidth().aspectRatio(1080f / 393f).shadow(6.dp, shape).clip(shape)) {
+        HorizontalPager(pager, Modifier.fillMaxSize()) { i ->
+            val b = items[i]
+            Box(Modifier.fillMaxSize().background(Brush.linearGradient(listOf(N.B700, N.B500))).clickable(enabled = b.str("linkUrl").isNotEmpty()) { onClick(b.str("linkUrl")) }) {
+                if (b.str("imgUrl").isNotEmpty()) AsyncImage(b.str("imgUrl"), null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                if (!truthy(b["imgOnly"])) {
+                    Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(0f to N.B900.copy(alpha = 0.65f), 0.7f to Color.Transparent, 1f to Color.Transparent)))
+                    Column(Modifier.align(Alignment.CenterStart).fillMaxWidth(0.62f).padding(start = 18.dp)) {
+                        if (b.str("title").isNotEmpty()) Text(b.str("title"), fontSize = 17.sp, fontWeight = FontWeight.ExtraBold, color = Color.White)
+                        if (b.str("sub").isNotEmpty()) Text(b.str("sub"), fontSize = 12.sp, color = Color.White.copy(alpha = 0.92f))
+                    }
+                }
+            }
+        }
+        if (items.size > 1) Row(Modifier.align(Alignment.BottomCenter).padding(bottom = 7.dp), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+            items.indices.forEach { i ->
+                Box(Modifier.size(if (i == pager.currentPage) 14.dp else 5.dp, 5.dp).clip(CircleShape).background(Color.White.copy(alpha = if (i == pager.currentPage) 1f else 0.55f)))
+            }
+        }
     }
 }
