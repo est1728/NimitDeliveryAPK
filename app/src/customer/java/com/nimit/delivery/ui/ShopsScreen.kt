@@ -38,6 +38,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
@@ -175,6 +178,7 @@ fun ShopsScreen(session: Session, onOpenShop: (String, String) -> Unit, onNaviga
         }
     }
     LaunchedEffect(Unit) { loadAll() }
+    LaunchedEffect(Unit) { AppTheme.sync(ctx) }
     LaunchedEffect(Unit) {
         val pc = ShopsRepo.popupCfg()
         if (pc != null && popupDue(pc, session)) { popup = pc; popupMarkShown(pc, session) }
@@ -261,11 +265,21 @@ fun ShopsScreen(session: Session, onOpenShop: (String, String) -> Unit, onNaviga
             LazyColumn(state = listState, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 96.dp)) {
                 // TOP BAR
                 item {
-                    Column(
+                    Box(
                         Modifier.fillMaxWidth().clip(RoundedCornerShape(bottomStart = 24.dp, bottomEnd = 24.dp))
                             .background(Brush.linearGradient(listOf(N.B900, N.B700)))
-                            .padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 16.dp)
                     ) {
+                    AppTheme.headerUrl?.let { hu ->
+                        AsyncImage(
+                            hu, null, contentScale = ContentScale.FillHeight, alignment = Alignment.CenterStart,
+                            modifier = Modifier.matchParentSize().graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+                                .drawWithContent {
+                                    drawContent()
+                                    drawRect(Brush.horizontalGradient(0.55f to Color.Black, 0.72f to Color.Transparent), blendMode = BlendMode.DstIn)
+                                }
+                        )
+                    }
+                    Column(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 16.dp)) {
                         Row(Modifier.fillMaxWidth().padding(bottom = 12.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Top) {
                             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
                                 Logo(40, float = true)
@@ -289,7 +303,11 @@ fun ShopsScreen(session: Session, onOpenShop: (String, String) -> Unit, onNaviga
                                 CircleBtn(P.MENU, 0) { sidebar = true }
                             }
                         }
-                        SearchBox { onNavigate("search") }
+                        Box(Modifier.padding(end = if (AppTheme.isDefault) 0.dp else 84.dp)) { SearchBox { onNavigate("search") } }
+                    }
+                    AppTheme.mascot("wave")?.let { mu ->
+                        AsyncImage(mu, null, contentScale = ContentScale.Fit, modifier = Modifier.align(Alignment.BottomEnd).padding(end = 8.dp, bottom = 6.dp).size(78.dp))
+                    }
                     }
                 }
                 // ACTIVE ORDER
@@ -575,9 +593,16 @@ private fun cartCount(session: Session): Int = try {
     }
 }
 
+/** รูปตกแต่งธีมเทศกาล (ไม่มีรูป/ธีมปกติ = ไม่แสดงอะไร) */
+@Composable private fun Sprite(name: String, modifier: Modifier, scale: ContentScale = ContentScale.Fit) {
+    val u: String = AppTheme.sprite(name) ?: return
+    AsyncImage(u, null, contentScale = scale, modifier = modifier)
+}
+
 @Composable private fun SectionTitle(t: String, top: Int) {
     Row(Modifier.padding(start = 16.dp, end = 16.dp, top = top.dp, bottom = 11.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Box(Modifier.size(width = 4.dp, height = 16.dp).clip(RoundedCornerShape(2.dp)).background(N.B600))
+        if (AppTheme.sprite("pumpkin") != null) Sprite("pumpkin", Modifier.size(22.dp))
+        else Box(Modifier.size(width = 4.dp, height = 16.dp).clip(RoundedCornerShape(2.dp)).background(N.B600))
         Text(t, fontSize = 15.5.sp, fontWeight = FontWeight.SemiBold, color = N.Ink900)
     }
 }
@@ -654,6 +679,7 @@ private fun ShopCard(s: Shop, open: Boolean, fav: Boolean, onClick: () -> Unit, 
                 modifier = Modifier.align(Alignment.TopStart).padding(9.dp).clip(RoundedCornerShape(8.dp)).background(BADGE_COLOR[badge] ?: N.B700).padding(horizontal = 9.dp, vertical = 4.dp))
             Text(if (open) "เปิด" else "ปิด", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = if (open) N.Green600 else N.Red500,
                 modifier = Modifier.align(Alignment.TopEnd).padding(9.dp).clip(RoundedCornerShape(8.dp)).background(if (open) N.Green100 else N.Red100).padding(horizontal = 10.dp, vertical = 4.dp))
+            Sprite("bat", Modifier.align(Alignment.TopEnd).offset(x = (-62).dp, y = 6.dp).size(width = 34.dp, height = 24.dp))
         }
         Column(Modifier.padding(start = 14.dp, end = 14.dp, bottom = 14.dp)) {
             Row(verticalAlignment = Alignment.Top) {
@@ -801,6 +827,7 @@ private fun serviceButtons(cfg: Doc?): List<SvcDef> = SVC_DEF.filter { svcState(
 @Composable
 private fun ServiceButtons(list: List<SvcDef>, cfg: Doc?, onFood: () -> Unit, onSoon: () -> Unit) {
     val shape = RoundedCornerShape(18.dp)
+    Box(Modifier.fillMaxWidth()) {
     Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 14.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         list.forEach { b ->
             val soon = svcState(cfg, b) == "soon"
@@ -815,10 +842,13 @@ private fun ServiceButtons(list: List<SvcDef>, cfg: Doc?, onFood: () -> Unit, on
                     Text(b.title, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = N.B900, maxLines = 1, modifier = Modifier.padding(top = 6.dp))
                     Text(b.sub, fontSize = 10.5.sp, color = Color(0xFF64748B), maxLines = 1)
                 }
+                Sprite("web", Modifier.align(Alignment.TopEnd).size(46.dp).clip(RoundedCornerShape(topEnd = 18.dp)))
                 if (soon) Text("เร็วๆ นี้", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.White,
                     modifier = Modifier.align(Alignment.TopEnd).offset(x = (-8).dp, y = (-7).dp).clip(RoundedCornerShape(8.dp)).background(Color(0xFFF59E0B)).padding(horizontal = 7.dp, vertical = 1.dp))
             }
         }
+    }
+    Sprite("sit", Modifier.align(Alignment.TopEnd).offset(x = (-76).dp, y = (-50).dp).size(width = 58.dp, height = 64.dp))
     }
 }
 
@@ -875,11 +905,15 @@ private fun noEmoji(t: String): String = t.filter { ch -> !Character.isSurrogate
 @Composable
 private fun CouponBox(list: List<HomeCoupon>, prefer: String?, onAll: () -> Unit, onAct: (HomeCoupon) -> Unit) {
     val shape = RoundedCornerShape(20.dp)
-    Column(
-        Modifier.padding(start = 16.dp, end = 16.dp, top = 14.dp).fillMaxWidth().clip(shape)
+    val peek: Boolean = AppTheme.sprite("peek") != null
+    Box(Modifier.padding(start = 16.dp, end = 16.dp, top = if (peek) 58.dp else 14.dp).fillMaxWidth()) {
+    Box(
+        Modifier.fillMaxWidth().clip(shape)
             .background(Brush.linearGradient(listOf(Color(0xFFE7EFFC), Color(0xFFF4F8FE), Color.White)))
-            .border(1.dp, Color(0xFFD3E1FA), shape).padding(top = 12.dp, bottom = 6.dp)
+            .border(1.dp, Color(0xFFD3E1FA), shape)
     ) {
+    Sprite("cbg", Modifier.matchParentSize(), ContentScale.Crop)
+    Column(Modifier.fillMaxWidth().padding(top = 12.dp, bottom = 6.dp)) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp).padding(bottom = 6.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Box(Modifier.size(26.dp).clip(RoundedCornerShape(9.dp)).background(N.B700), contentAlignment = Alignment.Center) { PathIcon(P.TICKET, Color.White, 15.dp) }
@@ -894,6 +928,9 @@ private fun CouponBox(list: List<HomeCoupon>, prefer: String?, onAll: () -> Unit
         LazyRow(contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 6.dp, bottom = 10.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             items(list, key = { it.id }) { hc -> CouponTicket(hc, picked = hc.claimId != null && hc.claimId == prefer, onAct = { onAct(hc) }) }
         }
+    }
+    }
+    Sprite("peek", Modifier.align(Alignment.TopEnd).offset(x = (-96).dp, y = (-61).dp).size(width = 76.dp, height = 64.dp))
     }
 }
 

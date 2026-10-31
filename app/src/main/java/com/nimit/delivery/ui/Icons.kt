@@ -15,12 +15,20 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
 object N {
-    val B900 = Color(0xFF071B3D); val B800 = Color(0xFF0B2C63); val B700 = Color(0xFF0E3B8C)
-    val B600 = Color(0xFF1550B8); val B500 = Color(0xFF2E6FE0); val B100 = Color(0xFFE7EFFC); val B50 = Color(0xFFF4F8FE)
-    val Amber600 = Color(0xFFD98F1E); val Green600 = Color(0xFF12996B); val Green100 = Color(0xFFDFF4EC)
+    // สีหลักอ่านจากธีมเทศกาล (AppTheme) ถ้าไม่มีธีมจะได้ค่าเดิม
+    val B900: Color get() = AppTheme.c("B900", Color(0xFF071B3D))
+    val B800: Color get() = AppTheme.c("B800", Color(0xFF0B2C63))
+    val B700: Color get() = AppTheme.c("B700", Color(0xFF0E3B8C))
+    val B600: Color get() = AppTheme.c("B600", Color(0xFF1550B8))
+    val B500: Color get() = AppTheme.c("B500", Color(0xFF2E6FE0))
+    val B100: Color get() = AppTheme.c("B100", Color(0xFFE7EFFC))
+    val B50: Color get() = AppTheme.c("B50", Color(0xFFF4F8FE))
+    val Amber600: Color get() = AppTheme.c("Amber600", Color(0xFFD98F1E))
+    val Green600 = Color(0xFF12996B); val Green100 = Color(0xFFDFF4EC)
     val Red500 = Color(0xFFE5484D); val Red100 = Color(0xFFFCE7E8)
     val Ink900 = Color(0xFF101828); val Ink700 = Color(0xFF3A4256); val Ink500 = Color(0xFF667085); val Ink300 = Color(0xFF9AA2B8)
-    val Line = Color(0xFFE7EAF2); val Bg = Color(0xFFF5F7FC)
+    val Line = Color(0xFFE7EAF2)
+    val Bg: Color get() = AppTheme.c("Bg", Color(0xFFF5F7FC))
 }
 
 object P {
