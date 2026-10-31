@@ -6,9 +6,10 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -27,8 +28,13 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
@@ -37,21 +43,26 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
 import com.nimit.delivery.data.AdminOrdersStore
 import com.nimit.delivery.data.AdminShop
 import com.nimit.delivery.data.AdminShopsApi
@@ -59,7 +70,10 @@ import com.nimit.delivery.data.adminErrorText
 import kotlinx.coroutines.launch
 
 private val SGreen = Color(0xFF16A34A)
+private val SGreenL = Color(0xFFDCFCE7)
 private val SRed = Color(0xFFDC2626)
+private val SRedL = Color(0xFFFEE2E2)
+private val SBorder = Color(0xFFEEF1F6)
 private const val WEB_BASE = "https://nimitdelivery.vercel.app"
 
 private fun sToast(ctx: Context, msg: String) {
@@ -71,19 +85,28 @@ private fun sOpenUrl(ctx: Context, url: String) {
 }
 
 @Composable
-fun AdminShopsPage(store: AdminOrdersStore) {
+fun AdminShopsPage(store: AdminOrdersStore, ownZoneId: String) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     var shops by remember { mutableStateOf<List<AdminShop>?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var zoneFilter by remember { mutableStateOf("") }
+    var zoneMenu by remember { mutableStateOf(false) }
     var closeFor by remember { mutableStateOf<AdminShop?>(null) }
     var typeFor by remember { mutableStateOf<AdminShop?>(null) }
+    var deleteFor by remember { mutableStateOf<AdminShop?>(null) }
+    var showForm by remember { mutableStateOf(false) }
+    var editing by remember { mutableStateOf<AdminShop?>(null) }
     var stage by remember { mutableStateOf(0) }
     var closeType by remember { mutableStateOf("long") }
     var reason by remember { mutableStateOf("") }
     var hours by remember { mutableStateOf("0") }
     var minutes by remember { mutableStateOf("30") }
+    var fName by remember { mutableStateOf("") }
+    var fSlug by remember { mutableStateOf("") }
+    var fDesc by remember { mutableStateOf("") }
+    var fPhone by remember { mutableStateOf("") }
+    val fZones = remember { mutableStateListOf<String>() }
 
     DisposableEffect(Unit) {
         val reg = AdminShopsApi.listen({ shops = it }, { error = it })
@@ -97,23 +120,44 @@ fun AdminShopsPage(store: AdminOrdersStore) {
         ?.sortedBy { it.name }
 
     Column(Modifier.fillMaxSize().background(C.Gray)) {
-        Row(Modifier.fillMaxWidth().background(Color.White).padding(horizontal = 16.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("ร้านค้า", fontSize = 17.sp, fontWeight = FontWeight.ExtraBold, color = C.Text, modifier = Modifier.weight(1f))
-            if (list != null) Text(list.size.toString() + " ร้าน", fontSize = 12.sp, color = C.Subtext)
+        // หัวไล่สี + ปุ่ม +
+        Row(
+            Modifier.fillMaxWidth().background(Brush.linearGradient(listOf(C.Primary, C.PrimaryDark))).padding(horizontal = 16.dp, vertical = 16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("ร้านค้า", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = Color.White, modifier = Modifier.weight(1f))
+            Box(
+                Modifier.size(42.dp).clip(RoundedCornerShape(14.dp)).background(Color.White.copy(alpha = 0.2f)).clickable {
+                    editing = null; fName = ""; fSlug = ""; fDesc = ""; fPhone = ""
+                    fZones.clear(); fZones.add(ownZoneId)
+                    showForm = true
+                },
+                contentAlignment = Alignment.Center
+            ) { Icon(AdminIcPlus, null, tint = Color.White, modifier = Modifier.size(22.dp)) }
         }
+        // เลือกเขต: แสดงเฉพาะเมื่อผูกหลังบ้านร่วมกับเขตอื่น
         if (zoneIds.size > 1) {
-            Row(
-                Modifier.fillMaxWidth().background(Color.White).horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                SChip("ทุกเขต", zoneFilter.isEmpty()) { zoneFilter = "" }
-                for (z in zoneIds) SChip(store.zoneNames.value[z] ?: z, zoneFilter == z) { zoneFilter = z }
+            Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)) {
+                Row(
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Color(0xFFF0F1F3))
+                        .border(BorderStroke(1.5.dp, Color(0xFFE2E8F0)), RoundedCornerShape(14.dp))
+                        .clickable { zoneMenu = true }.padding(horizontal = 16.dp, vertical = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(if (zoneFilter.isEmpty()) "ร้านค้าทั้งหมด" else (store.zoneNames.value[zoneFilter] ?: zoneFilter), fontSize = 15.sp, color = C.Text, modifier = Modifier.weight(1f))
+                    Icon(AdminIcChevron, null, tint = C.Subtext, modifier = Modifier.size(22.dp))
+                }
+                DropdownMenu(expanded = zoneMenu, onDismissRequest = { zoneMenu = false }) {
+                    DropdownMenuItem(text = { Text("ร้านค้าทั้งหมด") }, onClick = { zoneFilter = ""; zoneMenu = false })
+                    for (z in zoneIds) {
+                        DropdownMenuItem(text = { Text(store.zoneNames.value[z] ?: z) }, onClick = { zoneFilter = z; zoneMenu = false })
+                    }
+                }
             }
         }
-        HorizontalDivider(color = Color(0xFFF0F2F5))
         LazyColumn(
             Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(12.dp),
+            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             if (list == null || list.isEmpty()) {
@@ -121,7 +165,7 @@ fun AdminShopsPage(store: AdminOrdersStore) {
                     val msg: String = when {
                         error != null -> "โหลดร้านค้าไม่ได้: " + error
                         list == null -> "กำลังโหลด..."
-                        else -> "ไม่พบร้านค้าในเขตที่เลือก"
+                        else -> "ไม่พบร้านค้า"
                     }
                     Box(Modifier.fillMaxWidth().padding(top = 60.dp), contentAlignment = Alignment.Center) {
                         Text(msg, fontSize = 13.sp, color = C.Subtext)
@@ -141,11 +185,89 @@ fun AdminShopsPage(store: AdminOrdersStore) {
                                 }
                             }
                         },
-                        onToggleType = { typeFor = s }
+                        onToggleType = { typeFor = s },
+                        onEdit = {
+                            editing = s; fName = s.name; fSlug = s.s("slug"); fDesc = s.s("desc"); fPhone = s.s("phone")
+                            fZones.clear(); fZones.addAll(s.zones())
+                            showForm = true
+                        },
+                        onDelete = { deleteFor = s }
                     )
                 }
             }
         }
+    }
+
+    // ===== เพิ่ม/แก้ไขร้าน =====
+    if (showForm) {
+        val ed = editing
+        AlertDialog(
+            onDismissRequest = { showForm = false },
+            title = { Text(if (ed == null) "เพิ่มร้านค้า" else "แก้ไขข้อมูลร้าน") },
+            text = {
+                Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(value = fName, onValueChange = { fName = it }, label = { Text("ชื่อร้าน *") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(value = fSlug, onValueChange = { fSlug = it }, label = { Text("slug (ลิงก์)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(value = fDesc, onValueChange = { fDesc = it }, label = { Text("คำอธิบาย") }, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(
+                        value = fPhone, onValueChange = { fPhone = it.filter { c -> c.isDigit() } }, label = { Text("เบอร์โทร") }, singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone), modifier = Modifier.fillMaxWidth()
+                    )
+                    Text("เขตที่ร้านนี้อยู่", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = C.Subtext, modifier = Modifier.padding(top = 4.dp))
+                    for (z in zoneIds) {
+                        Row(
+                            Modifier.fillMaxWidth().clickable { if (fZones.contains(z)) fZones.remove(z) else fZones.add(z) },
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Checkbox(checked = fZones.contains(z), onCheckedChange = { on -> if (on) { if (!fZones.contains(z)) fZones.add(z) } else fZones.remove(z) })
+                            Text(store.zoneNames.value[z] ?: z, fontSize = 14.sp, color = C.Text)
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    if (fName.trim().isEmpty()) {
+                        sToast(ctx, "กรุณากรอกชื่อร้าน")
+                    } else {
+                        val id: String? = ed?.id
+                        // เขตนอกกลุ่มที่เห็นอยู่ ต้องคงไว้ตามเดิม ไม่ให้หายตอนบันทึก
+                        val keep: List<String> = ed?.zones()?.filter { !zoneIds.contains(it) } ?: emptyList()
+                        val picked: List<String> = fZones.filter { zoneIds.contains(it) } + keep
+                        val n = fName.trim()
+                        val sl = fSlug.trim()
+                        val de = fDesc.trim()
+                        val ph = fPhone.trim()
+                        showForm = false
+                        scope.launch {
+                            try { AdminShopsApi.saveShop(id, n, sl, de, ph, picked); sToast(ctx, "บันทึกสำเร็จ") }
+                            catch (e: Exception) { sToast(ctx, "บันทึกไม่สำเร็จ: " + adminErrorText(e)) }
+                        }
+                    }
+                }) { Text("บันทึก") }
+            },
+            dismissButton = { TextButton(onClick = { showForm = false }) { Text("ปิด") } }
+        )
+    }
+
+    // ===== ลบร้าน =====
+    val df = deleteFor
+    if (df != null) {
+        AlertDialog(
+            onDismissRequest = { deleteFor = null },
+            title = { Text("ลบร้านนี้?") },
+            text = { Text(df.name + " จะถูกลบออกจากระบบ") },
+            confirmButton = {
+                TextButton(onClick = {
+                    val id = df.id
+                    deleteFor = null
+                    scope.launch {
+                        try { AdminShopsApi.deleteShop(id); sToast(ctx, "ลบแล้ว") } catch (e: Exception) { sToast(ctx, "ลบไม่สำเร็จ") }
+                    }
+                }) { Text("ลบ", color = SRed) }
+            },
+            dismissButton = { TextButton(onClick = { deleteFor = null }) { Text("ยกเลิก") } }
+        )
     }
 
     // ===== ปิดร้าน: เลือกรูปแบบ แล้วใส่เหตุผล =====
@@ -158,7 +280,7 @@ fun AdminShopsPage(store: AdminOrdersStore) {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     if (stage == 0) {
                         Text("เลือกรูปแบบการปิดร้าน", fontSize = 13.sp, color = C.Subtext)
-                        SChoice("ปิดยาว", "ปิดจนกว่าจะถึงรอบเปิดร้านถัดไปตามเวลาที่ตั้งไว้ (ถ้าร้านไม่ได้เปิดเวลาเปิด-ปิดอัตโนมัติ จะปิดค้างจนกว่าจะกดเปิดเอง)") {
+                        SChoice("ปิดยาว", "ปิดจนกว่าจะถึงรอบเปิดร้านถัดไปตามเวลาที่ตั้งไว้ (ถ้าร้านไม่ได้ตั้งเวลาเปิด-ปิดอัตโนมัติ จะปิดค้างจนกว่าจะกดเปิดเอง)") {
                             closeType = "long"; stage = 1
                         }
                         SChoice("ปิดชั่วคราว", "ตั้งเวลานับถอยหลัง ครบเวลาแล้วร้านเปิดเองอัตโนมัติ") {
@@ -254,16 +376,10 @@ fun AdminShopsPage(store: AdminOrdersStore) {
 }
 
 @Composable
-private fun SChip(text: String, on: Boolean, onClick: () -> Unit) {
-    Box(
-        Modifier.clip(RoundedCornerShape(20.dp)).background(if (on) C.Primary else C.Gray).clickable { onClick() }.padding(horizontal = 14.dp, vertical = 7.dp)
-    ) { Text(text, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = if (on) Color.White else C.Subtext, maxLines = 1) }
-}
-
-@Composable
 private fun SChoice(title: String, sub: String, onClick: () -> Unit) {
     Column(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Color.White)
+            .border(BorderStroke(1.dp, SBorder), RoundedCornerShape(12.dp))
             .clickable { onClick() }.padding(horizontal = 14.dp, vertical = 12.dp)
     ) {
         Text(title, fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, color = C.Text)
@@ -272,66 +388,98 @@ private fun SChoice(title: String, sub: String, onClick: () -> Unit) {
 }
 
 @Composable
-private fun ShopCard(s: AdminShop, store: AdminOrdersStore, onToggleOpen: () -> Unit, onToggleType: () -> Unit) {
+private fun ShopCard(
+    s: AdminShop, store: AdminOrdersStore,
+    onToggleOpen: () -> Unit, onToggleType: () -> Unit, onEdit: () -> Unit, onDelete: () -> Unit
+) {
     val ctx = LocalContext.current
     val zones: List<String> = s.zones()
     val link: String = WEB_BASE + "/shop-admin.html?id=" + s.slug
-    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Color.White)) {
-        Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.Top) {
+    var menu by remember { mutableStateOf(false) }
+    val img: String = s.s("avatarUrl").ifEmpty { s.s("imgUrl") }
+    Column(
+        Modifier.fillMaxWidth().alpha(if (s.isOpen) 1f else 0.6f).clip(RoundedCornerShape(22.dp)).background(Color.White)
+            .border(BorderStroke(1.5.dp, SBorder), RoundedCornerShape(22.dp))
+    ) {
+        Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.Top) {
             Box(
-                Modifier.size(44.dp).clip(CircleShape).background(Brush.linearGradient(listOf(C.Primary, Color(0xFF1565C0)))),
+                Modifier.size(60.dp).clip(CircleShape).background(Brush.linearGradient(listOf(C.Primary, Color(0xFF1565C0)))),
                 contentAlignment = Alignment.Center
-            ) { Text(s.name.take(1), fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = Color.White) }
-            Spacer(Modifier.width(12.dp))
+            ) {
+                Icon(AdminIcShops, null, tint = Color.White.copy(alpha = 0.35f), modifier = Modifier.size(26.dp))
+                if (img.isNotEmpty()) AsyncImage(model = img, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+            }
+            Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f)) {
-                Text(s.name, fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, color = C.Text, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                if (s.s("phone").isNotEmpty()) Text(s.s("phone"), fontSize = 12.sp, color = C.Subtext)
+                Text(s.name, fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = C.Text, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                if (s.s("phone").isNotEmpty()) Text(s.s("phone"), fontSize = 14.sp, color = C.Subtext)
                 val addr: String = s.s("address").ifEmpty { s.s("desc") }
-                if (addr.isNotEmpty()) Text(addr, fontSize = 12.sp, color = C.Subtext, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                Spacer(Modifier.height(4.dp))
+                if (addr.isNotEmpty()) Text(addr, fontSize = 14.sp, color = C.Subtext, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 if (zones.isEmpty()) {
                     SBadge("ร้านกลาง (ไม่มีเขต)", Color(0xFFF1F5F9), C.Subtext)
                 } else {
                     for (z in zones) SBadge("เขต: " + (store.zoneNames.value[z] ?: z), Color(0xFFE8F0FE), C.Primary)
                 }
                 if (!s.isOpen && s.s("closeReason").isNotEmpty()) {
-                    Text("เหตุผลที่ปิด: " + s.s("closeReason"), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = SRed, modifier = Modifier.padding(top = 4.dp))
+                    Text("เหตุผลที่ปิด: " + s.s("closeReason"), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = SRed, modifier = Modifier.padding(top = 6.dp))
                 }
             }
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(if (s.isOpen) "เปิด" else "ปิด", fontSize = 12.sp, fontWeight = FontWeight.ExtraBold, color = if (s.isOpen) SGreen else SRed)
-                Text("สถานะ", fontSize = 10.sp, color = C.Subtext)
+            Column(horizontalAlignment = Alignment.End) {
+                Text(if (s.isOpen) "เปิด" else "ปิด", fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, color = if (s.isOpen) SGreen else SRed)
+                Text("สถานะ", fontSize = 12.sp, color = C.Subtext)
             }
         }
-        HorizontalDivider(color = Color(0xFFF5F6F8))
-        Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+        HorizontalDivider(color = SBorder)
+        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             Switch(
                 checked = s.isOpen, onCheckedChange = { onToggleOpen() },
-                colors = SwitchDefaults.colors(checkedTrackColor = SGreen, checkedThumbColor = Color.White)
+                colors = SwitchDefaults.colors(checkedTrackColor = C.Primary, checkedThumbColor = Color.White, uncheckedTrackColor = Color(0xFFD1D5DB), uncheckedThumbColor = Color.White, uncheckedBorderColor = Color.Transparent)
             )
-            Text(if (s.isOpen) "เปิด" else "ปิด", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = C.Subtext, modifier = Modifier.padding(start = 6.dp))
-            Spacer(Modifier.width(14.dp))
+            Text(if (s.isOpen) "เปิด" else "ปิด", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = C.Subtext, modifier = Modifier.padding(start = 8.dp))
+            Spacer(Modifier.width(16.dp))
             Switch(
                 checked = s.isProxy, onCheckedChange = { onToggleType() },
-                colors = SwitchDefaults.colors(checkedTrackColor = C.Primary, checkedThumbColor = Color.White)
+                colors = SwitchDefaults.colors(checkedTrackColor = C.Primary, checkedThumbColor = Color.White, uncheckedTrackColor = Color(0xFFD1D5DB), uncheckedThumbColor = Color.White, uncheckedBorderColor = Color.Transparent)
             )
-            Text("ฝากซื้อ", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = if (s.isProxy) C.Primary else C.Subtext, modifier = Modifier.padding(start = 6.dp))
+            Text("ฝากซื้อ", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = if (s.isProxy) C.Primary else C.Subtext, modifier = Modifier.padding(start = 8.dp))
+            Spacer(Modifier.weight(1f))
+            // ปุ่มแก้ไขปุ่มเดียว: กดแล้วมีป๊อปอัปเมนู
+            Box {
+                Box(
+                    Modifier.size(52.dp).clip(RoundedCornerShape(16.dp)).background(SGreenL).clickable { menu = true },
+                    contentAlignment = Alignment.Center
+                ) { Icon(AdminIcEdit, null, tint = SGreen, modifier = Modifier.size(24.dp)) }
+                DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, offset = DpOffset(0.dp, (-260).dp)) {
+                    DropdownMenuItem(
+                        text = { Text("เปิดหน้าร้าน (เว็บ)") }, leadingIcon = { Icon(AdminIcEye, null, tint = C.Primary) },
+                        onClick = { menu = false; sOpenUrl(ctx, link) }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("จัดการเมนู (เว็บ)") }, leadingIcon = { Icon(AdminIcDoc, null, tint = SGreen) },
+                        onClick = { menu = false; sOpenUrl(ctx, WEB_BASE + "/shop-manage.html?id=" + s.slug) }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("แก้ไขข้อมูลร้าน") }, leadingIcon = { Icon(AdminIcEdit, null, tint = C.Primary) },
+                        onClick = { menu = false; onEdit() }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("ลบร้าน", color = SRed) }, leadingIcon = { Icon(AdminIcTrash, null, tint = SRed) },
+                        onClick = { menu = false; onDelete() }
+                    )
+                }
+            }
         }
-        Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            SBtn("เปิดหน้าร้าน", Modifier.weight(1f)) { sOpenUrl(ctx, link) }
-            SBtn("จัดการเมนู (เว็บ)", Modifier.weight(1f)) { sOpenUrl(ctx, WEB_BASE + "/shop-manage.html?id=" + s.slug) }
-        }
-        Row(Modifier.fillMaxWidth().padding(start = 14.dp, end = 14.dp, top = 4.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(link, fontSize = 10.sp, color = C.Subtext, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+        Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(link, fontSize = 13.sp, color = C.Subtext, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
             Text(
-                "คัดลอก", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = C.Primary,
+                "คัดลอก", fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, color = C.Primary,
                 modifier = Modifier.clickable {
                     try {
                         val cm = ctx.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                         cm.setPrimaryClip(ClipData.newPlainText("shop-link", link))
                         sToast(ctx, "คัดลอกลิงก์แล้ว")
                     } catch (e: Exception) { sToast(ctx, "คัดลอกไม่ได้") }
-                }.padding(start = 8.dp)
+                }.padding(start = 10.dp)
             )
         }
     }
@@ -339,15 +487,7 @@ private fun ShopCard(s: AdminShop, store: AdminOrdersStore, onToggleOpen: () -> 
 
 @Composable
 private fun SBadge(text: String, bg: Color, fg: Color) {
-    Box(Modifier.padding(top = 4.dp).clip(RoundedCornerShape(20.dp)).background(bg).padding(horizontal = 8.dp, vertical = 2.dp)) {
-        Text(text, fontSize = 10.5.sp, fontWeight = FontWeight.ExtraBold, color = fg)
+    Box(Modifier.padding(top = 6.dp).clip(RoundedCornerShape(20.dp)).background(bg).padding(horizontal = 12.dp, vertical = 5.dp)) {
+        Text(text, fontSize = 12.sp, fontWeight = FontWeight.ExtraBold, color = fg)
     }
-}
-
-@Composable
-private fun SBtn(text: String, modifier: Modifier, onClick: () -> Unit) {
-    Box(
-        modifier.height(36.dp).clip(RoundedCornerShape(10.dp)).background(C.PrimaryLight).clickable { onClick() },
-        contentAlignment = Alignment.Center
-    ) { Text(text, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = C.Primary) }
 }

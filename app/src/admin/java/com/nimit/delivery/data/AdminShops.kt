@@ -94,4 +94,34 @@ object AdminShopsApi {
         }
         return null
     }
+
+    /** เพิ่ม (id = null) หรือแก้ไขร้าน: ชื่อ slug คำอธิบาย เบอร์ และเขตที่ผูก (franchiseIds) เหมือนเว็บ */
+    suspend fun saveShop(id: String?, name: String, slug: String, desc: String, phone: String, zoneIds: List<String>) {
+        val m = HashMap<String, Any?>()
+        m["name"] = name
+        m["slug"] = slug
+        m["desc"] = desc
+        m["phone"] = phone
+        m["updatedAt"] = FieldValue.serverTimestamp()
+        if (id != null) {
+            // แก้ไขร้านเดิม: ไม่แตะสถานะเปิด/ปิด  เลือกเขตไว้ = เขียนทับ franchiseIds และลบฟิลด์เก่า franchiseId  ไม่เลือกเลย = ลบทั้งสองฟิลด์
+            if (zoneIds.isNotEmpty()) {
+                m["franchiseIds"] = zoneIds
+                m["franchiseId"] = FieldValue.delete()
+            } else {
+                m["franchiseIds"] = FieldValue.delete()
+                m["franchiseId"] = FieldValue.delete()
+            }
+            db.collection("shops").document(id).update(m).await()
+        } else {
+            m["isOpen"] = true
+            if (zoneIds.isNotEmpty()) m["franchiseIds"] = zoneIds
+            m["createdAt"] = FieldValue.serverTimestamp()
+            db.collection("shops").add(m).await()
+        }
+    }
+
+    suspend fun deleteShop(id: String) {
+        db.collection("shops").document(id).delete().await()
+    }
 }
