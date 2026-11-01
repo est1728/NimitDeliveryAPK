@@ -237,7 +237,7 @@ fun DevCategorySendDialog(category: String, items: List<DevBroadcast>, onDismiss
                     val distinct = p.tokens.flatten().toSet().size
                     Text(
                         if (random) "สุ่มคนละ 1 ข้อความ: " + distinct + " เครื่อง จาก " + p.items.size + " ข้อความ"
-                        else p.items.size + " ข้อความ รวม " + total + " ครั้งส่ง",
+                        else p.items.size.toString() + " ข้อความ รวม " + total + " ครั้งส่ง",
                         fontSize = 13.sp, fontWeight = FontWeight.Bold, color = DevC.T, modifier = Modifier.padding(bottom = 8.dp)
                     )
                     for (i in p.items.indices) {

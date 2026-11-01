@@ -62,7 +62,7 @@ fun DevFinanceScreen() {
         Text("การเงินรวมทุกเขต", fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = DevC.P, modifier = Modifier.padding(bottom = 6.dp))
         Text(
             "รวมจากออเดอร์ที่สำเร็จ (done) จับเข้าเขตตามร้านของออเดอร์ ร้านที่อยู่หลายเขตนับในทุกเขตที่อยู่ แต่แถว \"รวม\" ไม่นับซ้ำ " +
-                "ชื่อคอลัมน์ตรงกับฟิลด์ในออเดอร์ อ่านอย่างเดียว",
+                "รายได้แอดมิน = หักเครดิตไรเดอร์ (walletCut) ไม่นับการเติมเครดิต (คำนวณจากออเดอร์เท่านั้น) ชื่อคอลัมน์ตรงกับฟิลด์ในออเดอร์ อ่านอย่างเดียว",
             fontSize = 11.5.sp, color = DevC.S, lineHeight = 17.sp
         )
     }
@@ -107,7 +107,7 @@ fun DevFinanceScreen() {
 
 private val devFinCols: List<Pair<String, Dp>> = listOf(
     "เขต" to 130.dp, "ออเดอร์" to 64.dp, "ยอดรวม (grandTotal)" to 120.dp,
-    "ค่าส่ง" to 80.dp, "walletCut" to 90.dp, "รายได้ไรเดอร์" to 100.dp
+    "ค่าส่ง" to 80.dp, "หักเครดิตไรเดอร์ (walletCut)" to 130.dp, "รายได้ไรเดอร์" to 100.dp
 )
 
 @Composable
