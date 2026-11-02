@@ -39,6 +39,7 @@ object AdminFcm {
     }
 
     fun register(ctx: Context, franchiseId: String) {
+        if (!AdminAlertService.enabled(ctx)) return
         try {
             FirebaseMessaging.getInstance().token
                 .addOnSuccessListener { t: String? -> if (t != null) save(ctx, franchiseId, t) }

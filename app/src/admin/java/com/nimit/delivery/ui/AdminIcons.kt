@@ -26,3 +26,6 @@ val AdminIcTrash: ImageVector = adminVec("a_trash", "M6 19c0 1.1.9 2 2 2h8c1.1 0
 val AdminIcWallet: ImageVector = adminVec("a_wallet", "M21 18v1c0 1.1-.9 2-2 2H5c-1.11 0-2-.9-2-2V5c0-1.1.89-2 2-2h14c1.1 0 2 .9 2 2v1h-9c-1.11 0-2 .9-2 2v8c0 1.1.89 2 2 2h9zm-9-2h10V8H12v8zm4-2.5c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5z")
 val AdminIcPlus: ImageVector = adminVec("a_plus", "M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z")
 val AdminIcChevron: ImageVector = adminVec("a_chev", "M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z")
+
+val AdminIcAccount: ImageVector = adminVec("a_account", "M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z")
+val AdminIcArrowRight: ImageVector = adminVec("a_arrow_r", "M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z")

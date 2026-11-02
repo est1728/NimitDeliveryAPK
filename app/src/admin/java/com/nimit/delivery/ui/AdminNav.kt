@@ -74,6 +74,8 @@ fun AdminHome(s: AdminSession, onLogout: () -> Unit) {
     var openId by remember { mutableStateOf<String?>(null) }
     var chatId by remember { mutableStateOf<String?>(null) }
     var showMenu by remember { mutableStateOf(false) }
+    var showSidebar by remember { mutableStateOf(false) }
+    var sidePage by remember { mutableStateOf("") }
     var creating by remember { mutableStateOf(false) }
     var editId by remember { mutableStateOf<String?>(null) }
     val store = remember(s.franchiseId) { AdminOrdersStore(s) }
@@ -108,6 +110,9 @@ fun AdminHome(s: AdminSession, onLogout: () -> Unit) {
         Box(Modifier.fillMaxSize().statusBarsPadding()) {
             AdminCreateOrderScreen(store, onBack = { creating = false }, onCreated = { creating = false })
         }
+    } else if (sidePage.isNotEmpty()) {
+        BackHandler { sidePage = "" }
+        Box(Modifier.fillMaxSize().statusBarsPadding()) { AdminSidePlaceholder(sidePage, onBack = { sidePage = "" }) }
     } else if (eid != null) {
         BackHandler { editId = null }
         Box(Modifier.fillMaxSize().statusBarsPadding()) {
@@ -128,7 +133,7 @@ fun AdminHome(s: AdminSession, onLogout: () -> Unit) {
                     AdminOrdersPage(
                         s, store,
                         onOpen = { openId = it },
-                        onMenu = { showMenu = true },
+                        onMenu = { showSidebar = true },
                         onCreate = { creating = true }
                     )
                 } else {
@@ -153,6 +158,19 @@ fun AdminHome(s: AdminSession, onLogout: () -> Unit) {
             }
         }
     }
+
+    AdminSidebar(
+        visible = showSidebar,
+        s = s,
+        onClose = { showSidebar = false },
+        onHistory = { showSidebar = false; adminOpenWeb(ctx, "history.html") },
+        onAds = { showSidebar = false; sidePage = "ads" },
+        onFlash = { showSidebar = false; sidePage = "flash" },
+        onCoupon = { showSidebar = false; sidePage = "coupon" },
+        onCategories = { showSidebar = false; adminOpenWeb(ctx, "categories-admin.html") },
+        onWallet = { showSidebar = false; adminOpenWeb(ctx, "wallet.html") },
+        onLogout = { showSidebar = false; onLogout() }
+    )
 
     if (showBattery) {
         val markAsked = { ctx.getSharedPreferences("nimit_admin_alert", Context.MODE_PRIVATE).edit().putBoolean("batteryAsked", true).apply() }

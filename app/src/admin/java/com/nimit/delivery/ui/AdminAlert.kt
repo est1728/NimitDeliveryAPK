@@ -321,11 +321,18 @@ class AdminAlertService : Service() {
 
         /** ring = true: ถูกปลุกด้วยข้อความ FCM → ออเดอร์ pending ที่เพิ่งเข้า (ใน 15 นาที) ต้องดังด้วย */
         fun start(ctx: Context, ring: Boolean = false, testId: String = "", title: String = "", body: String = "") {
+            if (!enabled(ctx)) return
             try {
                 val i = Intent(ctx, AdminAlertService::class.java).putExtra("ring", ring)
                 if (testId.isNotEmpty()) i.putExtra("testId", testId).putExtra("title", title).putExtra("body", body)
                 androidx.core.content.ContextCompat.startForegroundService(ctx, i)
             } catch (e: Exception) { }
+        }
+
+        fun enabled(ctx: Context): Boolean = ctx.applicationContext.getSharedPreferences("nimit_admin_alert", Context.MODE_PRIVATE).getBoolean("alertEnabled", true)
+
+        fun setEnabled(ctx: Context, v: Boolean) {
+            ctx.applicationContext.getSharedPreferences("nimit_admin_alert", Context.MODE_PRIVATE).edit().putBoolean("alertEnabled", v).apply()
         }
 
         fun stop(ctx: Context) {
