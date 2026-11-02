@@ -134,7 +134,7 @@ object DevGeo {
         return p.filterIndexed { i, _ -> keep[i] }
     }
 
-    private fun inside(pt: DevPt, poly: List<DevPt>): Boolean {
+    fun inside(pt: DevPt, poly: List<DevPt>): Boolean {
         var c = false
         var j = poly.size - 1
         for (i in poly.indices) {
