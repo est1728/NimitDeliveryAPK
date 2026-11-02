@@ -49,9 +49,6 @@ import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.layer.CompositingStrategy
-import androidx.compose.ui.graphics.rememberGraphicsLayer
-import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.layout.ContentScale
@@ -527,47 +524,41 @@ private fun RingCarousel(
 
 private const val RING_SLOTS = 9
 
-/** การ์ดหนึ่งช่องของวง: เนื้อหาถูกบันทึกไว้ใน GraphicsLayer ครั้งเดียว แล้วทุกเฟรมแค่วาดเลเยอร์นั้นผ่านเมทริกซ์ฉายภาพ
- *  (ไม่ต้องวาดข้อความ/รูป/ขอบใหม่ทุกเฟรม) — เนื้อหาเปลี่ยน (รูปโหลดเสร็จ, ขอบหน้าสุด) เมื่อไหร่ค่อยบันทึกใหม่เอง */
+private fun ringCardAlpha(d: Float, sp: Float): Float =
+    ((sp - 0.12f) / 0.88f).coerceIn(0f, 1f) * ((ringCos(d) - 0.1f) / 0.35f).coerceIn(0f, 1f)
+
+/** การ์ดหนึ่งช่องของวง: เนื้อหา (ข้อความ/รูป/ขอบ) อยู่ในเลเยอร์ของ Column ที่แคชไว้เอง วาดใหม่เฉพาะตอนเนื้อหาเปลี่ยน
+ *  ทุกเฟรมแค่วาดเลเยอร์นั้นผ่านเมทริกซ์ฉายภาพ (เดิมบันทึกซ้ำลง GraphicsLayer อีกชั้นแล้วการ์ดข้างโล่ง) */
 @Composable
 private fun BoxScope.RingCardSlot(
     j: Int, center: Int, pos: Animatable<Float, androidx.compose.animation.core.AnimationVector1D>,
     sp: Animatable<Float, androidx.compose.animation.core.AnimationVector1D>, density: Float,
     idx: Int, m: Doc, priceText: String, sold: Boolean, showCat: Boolean
 ) {
-    val layer = rememberGraphicsLayer()
     val front by remember(j) { derivedStateOf { ringCos(j - pos.value) > 0.9f } }
     val shape = RoundedCornerShape(16.dp)
-    SideEffect { layer.compositingStrategy = CompositingStrategy.ModulateAlpha }
+    val cardAlpha = { ringCardAlpha(j - pos.value, sp.value) }
     Box(
         Modifier.align(Alignment.TopCenter).padding(top = 6.dp).size(width = 120.dp, height = 158.dp)
             .zIndex(30f - min(25f, abs(j - center).toFloat()))
             .graphicsLayer { }   // ขอบเขตเลเยอร์: การวาดใหม่ทุกเฟรมไม่ลามไปทั้งหน้าจอ
             .drawWithContent {
-                drawContent()   // ลูกบันทึกเนื้อหาลง layer (ตัวลูกเองไม่วาดอะไร)
+                // เนื้อหาการ์ดอยู่ในเลเยอร์ของลูก (Column ที่มี graphicsLayer) ซึ่งแคชไว้เองอยู่แล้ว ทุกเฟรมแค่วาดเลเยอร์นั้นผ่านเมทริกซ์ฉายภาพ
                 val d = j - pos.value
                 val c = ringCos(d)
-                val fade = ((sp.value - 0.12f) / 0.88f).coerceIn(0f, 1f)
-                layer.alpha = fade * ((c - 0.1f) / 0.35f).coerceIn(0f, 1f)
+                val a = cardAlpha()
                 val m4 = ringMatrix(d, sp.value, density)
                 val cx = size.width / 2f; val cy = size.height / 2f
-                withTransform({ translate(cx, cy); transform(m4); translate(-cx, -cy) }) {
-                    if (layer.alpha > 0.003f) {
-                        drawLayer(layer)
-                        val dim = (0.35f * (1f - max(c, 0f))).coerceIn(0f, 1f) * layer.alpha
-                        if (dim > 0.003f) drawRoundRect(N.B800, cornerRadius = CornerRadius(16.dp.toPx()), alpha = dim)
-                    }
+                if (a > 0.003f) withTransform({ translate(cx, cy); transform(m4); translate(-cx, -cy) }) {
+                    this@drawWithContent.drawContent()
+                    val dim = (0.35f * (1f - max(c, 0f))).coerceIn(0f, 1f) * a
+                    if (dim > 0.003f) drawRoundRect(N.B800, cornerRadius = CornerRadius(16.dp.toPx()), alpha = dim)
                 }
             }
     ) {
         Column(
             Modifier.fillMaxSize()
-                .graphicsLayer { }
-                .drawWithContent {
-                    layer.record(this, layoutDirection, androidx.compose.ui.unit.IntSize(size.width.toInt(), size.height.toInt())) {
-                        this@drawWithContent.drawContent()
-                    }
-                }
+                .graphicsLayer { alpha = cardAlpha() }
                 .clip(shape).background(Color.White)
                 .border(2.dp, if (front) N.B700 else N.B500, shape)
                 .padding(8.dp),
