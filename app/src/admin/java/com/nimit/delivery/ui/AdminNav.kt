@@ -112,7 +112,9 @@ fun AdminHome(s: AdminSession, onLogout: () -> Unit) {
         }
     } else if (sidePage.isNotEmpty()) {
         BackHandler { sidePage = "" }
-        Box(Modifier.fillMaxSize().statusBarsPadding()) { AdminSidePlaceholder(sidePage, onBack = { sidePage = "" }) }
+        Box(Modifier.fillMaxSize().statusBarsPadding()) {
+            if (sidePage == "coupon") AdminCouponsPage(store, onBack = { sidePage = "" }) else AdminSidePlaceholder(sidePage, onBack = { sidePage = "" })
+        }
     } else if (eid != null) {
         BackHandler { editId = null }
         Box(Modifier.fillMaxSize().statusBarsPadding()) {
