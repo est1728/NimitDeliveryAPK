@@ -69,7 +69,8 @@ fun DevNotifyConfigScreen() {
         Text("ตั้งค่าข้อความแจ้งเตือน", fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = DevC.P, modifier = Modifier.padding(bottom = 6.dp))
         Text(
             "เว้นหัวข้อ/เนื้อหาว่างไว้ = ใช้ข้อความเดิมของแอป ตัวแปรเช่น {orderId} จะถูกแทนที่โดยผู้ส่ง/เซิร์ฟเวอร์ " +
-                "ค่าที่ตั้งจะมีผลเมื่อเซิร์ฟเวอร์หรือแอปนั้นถูกแก้ให้อ่านค่า (ยังไม่ได้เปิดใช้ในทุกแอป)",
+                "ค่าที่ตั้งจะมีผลเมื่อเซิร์ฟเวอร์หรือแอปนั้นถูกแก้ให้อ่านค่า (ยังไม่ได้เปิดใช้ในทุกแอป) " +
+                "เวลาที่แจ้งเตือนทำงาน (\"ทำงานเมื่อ\") ถูกกำหนดในโค้ดของแต่ละแอป หน้านี้แสดงให้ดูอย่างเดียว",
             fontSize = 11.5.sp, color = DevC.S, lineHeight = 17.sp
         )
     }
@@ -118,6 +119,7 @@ private fun DevEventCard(def: DevEventDef, cfg: DevEventCfg?, onSaved: (DevEvent
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text(def.label, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = DevC.T)
+                Text("ทำงานเมื่อ: " + def.whenText, fontSize = 11.sp, color = DevC.T, modifier = Modifier.padding(top = 2.dp))
                 Text("ตัวแปร: " + def.vars, fontSize = 11.sp, color = DevC.S, modifier = Modifier.padding(top = 2.dp))
             }
             Switch(

@@ -112,6 +112,7 @@ fun DevNotifyScreen() {
     var showCatManage by remember { mutableStateOf(false) }
     var catSend by remember { mutableStateOf<String?>(null) }
     var moveCatTarget by remember { mutableStateOf<DevBroadcast?>(null) }
+    var collapsed by remember { mutableStateOf(setOf<String>()) }
     val cs = rememberCoroutineScope()
 
     LaunchedEffect(sc) {
@@ -427,8 +428,13 @@ fun DevNotifyScreen() {
             if (g.isNotEmpty() || inGroup.isNotEmpty()) {
                 Row(Modifier.fillMaxWidth().padding(top = 6.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        (if (g.isEmpty()) "ไม่มีหมวด" else g) + " (" + inGroup.size + ")",
-                        fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = DevC.P, modifier = Modifier.weight(1f)
+                        (if (g in collapsed) "▸ " else "▾ ") + (if (g.isEmpty()) "ไม่มีหมวด" else g) + " (" + inGroup.size + ")",
+                        fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = DevC.P,
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable { collapsed = if (g in collapsed) collapsed - g else collapsed + g }
+                            .padding(vertical = 6.dp)
                     )
                     if (g.isNotEmpty() && inGroup.isNotEmpty()) {
                         Text(
@@ -441,9 +447,11 @@ fun DevNotifyScreen() {
                         )
                     }
                 }
-                if (inGroup.isEmpty()) DevCard { Text("หมวดนี้ยังไม่มีข้อความ", fontSize = 12.sp, color = DevC.S) }
-                inGroup.forEach { b ->
-                    DevBroadcastCard(b, busy, { sendSaved(b) }, { togglePause(b) }, { delTarget = b }, { moveCatTarget = b })
+                if (g !in collapsed) {
+                    if (inGroup.isEmpty()) DevCard { Text("หมวดนี้ยังไม่มีข้อความ", fontSize = 12.sp, color = DevC.S) }
+                    inGroup.forEach { b ->
+                        DevBroadcastCard(b, busy, { sendSaved(b) }, { togglePause(b) }, { delTarget = b }, { moveCatTarget = b })
+                    }
                 }
             }
         }

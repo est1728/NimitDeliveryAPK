@@ -7,7 +7,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.tasks.await
 
 // รายการเหตุการณ์แจ้งเตือนที่มีอยู่จริงในระบบ (จากโค้ดแอปและ rider.html เดิม) vars = ตัวแปรที่ผู้ส่งแนบได้
-data class DevEventDef(val id: String, val group: String, val label: String, val vars: String)
+data class DevEventDef(val id: String, val group: String, val label: String, val vars: String, val whenText: String)
 
 // title/body ว่าง = ใช้ข้อความเดิมของแอป/ผู้ส่ง
 data class DevEventCfg(val enabled: Boolean, val title: String, val body: String)
@@ -28,18 +28,18 @@ object DevNotifyConfig {
     )
 
     val events = listOf(
-        DevEventDef("rider_new_job", "rider", "งานใหม่มาแล้ว (แบนเนอร์+เสียงในแอปไรเดอร์)", "{orderId} {shopName}"),
-        DevEventDef("rider_accepted", "rider", "รับงานแล้ว", "{orderId}"),
-        DevEventDef("rider_assigned", "rider", "ถูกมอบหมายงาน", "{orderId}"),
-        DevEventDef("rider_reassigned", "rider", "งานถูกถอด/โอน (แบนเนอร์สีแดง)", "{orderId}"),
-        DevEventDef("status_accepted", "status", "ไรเดอร์รับงานแล้ว", "{orderId} {riderName} {riderPhone}"),
-        DevEventDef("status_picking", "status", "ไรเดอร์กำลังไปร้าน", "{orderId} {riderName}"),
-        DevEventDef("status_arrived", "status", "ไรเดอร์ถึงร้านแล้ว", "{orderId} {riderName}"),
-        DevEventDef("status_delivering", "status", "กำลังนำอาหารมาส่ง", "{orderId} {riderName}"),
-        DevEventDef("status_done", "status", "จัดส่งสำเร็จแล้ว", "{orderId}"),
-        DevEventDef("order_new", "order", "มีออเดอร์ใหม่ (ถึงร้าน/แอดมิน/ไรเดอร์)", "{orderId} {shopName} {total}"),
-        DevEventDef("shop_new_order", "shop", "ออเดอร์ใหม่ในแอปร้านค้า", "{orderId} {total}"),
-        DevEventDef("chat_message", "chat", "ข้อความแชทใหม่", "{orderId}")
+        DevEventDef("rider_new_job", "rider", "งานใหม่มาแล้ว (แบนเนอร์+เสียงในแอปไรเดอร์)", "{orderId} {shopName}", "เมื่อมีออเดอร์ใหม่รอไรเดอร์รับ (สถานะ pending)"),
+        DevEventDef("rider_accepted", "rider", "รับงานแล้ว", "{orderId}", "เมื่อไรเดอร์กดรับงานสำเร็จ"),
+        DevEventDef("rider_assigned", "rider", "ถูกมอบหมายงาน", "{orderId}", "เมื่อแอดมินมอบหมายงานให้ไรเดอร์คนนี้"),
+        DevEventDef("rider_reassigned", "rider", "งานถูกถอด/โอน (แบนเนอร์สีแดง)", "{orderId}", "เมื่องานถูกถอด/โอน (ผมยังไม่พบจุดที่เรียกใช้ในโค้ดเดิม)"),
+        DevEventDef("status_accepted", "status", "ไรเดอร์รับงานแล้ว", "{orderId} {riderName} {riderPhone}", "เมื่อไรเดอร์กดรับงาน (ส่งถึงลูกค้า)"),
+        DevEventDef("status_picking", "status", "ไรเดอร์กำลังไปร้าน", "{orderId} {riderName}", "เมื่อไรเดอร์เปลี่ยนสถานะเป็นกำลังไปร้าน (ส่งถึงลูกค้า)"),
+        DevEventDef("status_arrived", "status", "ไรเดอร์ถึงร้านแล้ว", "{orderId} {riderName}", "เมื่อไรเดอร์เปลี่ยนสถานะเป็นถึงร้านแล้ว (ส่งถึงลูกค้า)"),
+        DevEventDef("status_delivering", "status", "กำลังนำอาหารมาส่ง", "{orderId} {riderName}", "เมื่อไรเดอร์เปลี่ยนสถานะเป็นกำลังนำมาส่ง (ส่งถึงลูกค้า)"),
+        DevEventDef("status_done", "status", "จัดส่งสำเร็จแล้ว", "{orderId}", "เมื่อไรเดอร์กดจัดส่งสำเร็จ (ส่งถึงลูกค้า)"),
+        DevEventDef("order_new", "order", "มีออเดอร์ใหม่ (ถึงร้าน/แอดมิน/ไรเดอร์)", "{orderId} {shopName} {total}", "เมื่อลูกค้ากดสั่งซื้อสำเร็จ (แอปลูกค้าส่งหาร้าน/แอดมิน/ไรเดอร์)"),
+        DevEventDef("shop_new_order", "shop", "ออเดอร์ใหม่ในแอปร้านค้า", "{orderId} {total}", "เมื่อออเดอร์ใหม่เข้าร้านและแอปร้านตรวจพบ"),
+        DevEventDef("chat_message", "chat", "ข้อความแชทใหม่", "{orderId}", "เมื่อมีข้อความแชทใหม่ในออเดอร์")
     )
 
     private fun cfgOf(m: Map<String, Any?>): DevEventCfg = DevEventCfg(
