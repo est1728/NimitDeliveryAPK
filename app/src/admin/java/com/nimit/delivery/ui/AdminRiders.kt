@@ -60,6 +60,22 @@ import androidx.compose.ui.unit.sp
 import com.nimit.delivery.data.AdminRiderFull
 import com.nimit.delivery.data.AdminRidersApi
 import com.nimit.delivery.data.adminErrorText
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Paint
+import android.graphics.drawable.BitmapDrawable
+import android.view.MotionEvent
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.foundation.layout.height
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import org.osmdroid.config.Configuration
+import org.osmdroid.tileprovider.tilesource.TileSourceFactory
+import org.osmdroid.util.BoundingBox
+import org.osmdroid.util.GeoPoint
+import org.osmdroid.views.MapView
+import org.osmdroid.views.overlay.Marker
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -114,10 +130,6 @@ fun AdminRidersPage() {
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text("ไรเดอร์", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = Color.White, modifier = Modifier.weight(1f))
-            Box(Modifier.clip(RoundedCornerShape(20.dp)).background(Color.White.copy(alpha = 0.2f)).padding(horizontal = 10.dp, vertical = 4.dp)) {
-                Text(onlineCount.toString() + " คนออนไลน์", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
-            }
-            Spacer(Modifier.width(10.dp))
             Box(
                 Modifier.size(42.dp).clip(RoundedCornerShape(14.dp)).background(Color.White.copy(alpha = 0.2f))
                     .clickable { editing = null; fName = ""; fPhone = ""; fPlate = ""; fSlug = ""; showForm = true },
@@ -129,6 +141,7 @@ fun AdminRidersPage() {
             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
+            item { RiderMapCard(list ?: emptyList(), now) }
             if (list == null || list.isEmpty()) {
                 item {
                     val msg: String = when {
@@ -346,5 +359,101 @@ private fun RiderCard(
                 }.padding(start = 10.dp)
             )
         }
+    }
+}
+
+private fun riderPin(ctx: Context): BitmapDrawable {
+    val d: Float = ctx.resources.displayMetrics.density
+    val size: Int = (38 * d).toInt()
+    val bmp: Bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+    val c = Canvas(bmp)
+    val p = Paint(Paint.ANTI_ALIAS_FLAG)
+    p.color = 0xFFFFFFFF.toInt()
+    c.drawCircle(size / 2f, size / 2f, size / 2f, p)
+    p.color = 0xFF0C4AA6.toInt()
+    c.drawCircle(size / 2f, size / 2f, size / 2f - 2 * d, p)
+    p.color = 0xFFFFFFFF.toInt()
+    p.textSize = 18 * d
+    p.textAlign = Paint.Align.CENTER
+    c.drawText("\uD83D\uDEF5", size / 2f, size / 2f + 6 * d, p)
+    return BitmapDrawable(ctx.resources, bmp)
+}
+
+/** กรอบแผนที่ตำแหน่งไรเดอร์แบบเรียลไทม์ (เหมือนเว็บ): หมุดเฉพาะคนที่ออนไลน์ */
+@Composable
+private fun RiderMapCard(riders: List<AdminRiderFull>, now: Long) {
+    val ctx = LocalContext.current
+    val online: List<AdminRiderFull> = riders.filter { it.online(now) }
+    val fitted = remember { booleanArrayOf(false) }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val mapView: MapView = remember {
+        val conf = Configuration.getInstance()
+        conf.load(ctx, ctx.getSharedPreferences("osmdroid", Context.MODE_PRIVATE))
+        conf.userAgentValue = ctx.packageName
+        val base = java.io.File(ctx.cacheDir, "osmdroid")
+        conf.osmdroidBasePath = base
+        conf.osmdroidTileCache = java.io.File(base, "tiles")
+        val mv = MapView(ctx)
+        mv.setTileSource(TileSourceFactory.MAPNIK)
+        mv.setMultiTouchControls(true)
+        mv.controller.setZoom(12.0)
+        mv.controller.setCenter(GeoPoint(13.7563, 100.5018))
+        // ลากแผนที่ไม่ให้รายการเลื่อนตาม
+        mv.setOnTouchListener { v, ev ->
+            if (ev.action == MotionEvent.ACTION_DOWN || ev.action == MotionEvent.ACTION_MOVE) v.parent?.requestDisallowInterceptTouchEvent(true)
+            else if (ev.action == MotionEvent.ACTION_UP || ev.action == MotionEvent.ACTION_CANCEL) v.parent?.requestDisallowInterceptTouchEvent(false)
+            false
+        }
+        mv
+    }
+    DisposableEffect(lifecycleOwner) {
+        val obs = LifecycleEventObserver { _, e ->
+            if (e == Lifecycle.Event.ON_RESUME) mapView.onResume()
+            else if (e == Lifecycle.Event.ON_PAUSE) mapView.onPause()
+        }
+        lifecycleOwner.lifecycle.addObserver(obs)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(obs)
+            mapView.onPause()
+            mapView.onDetach()
+        }
+    }
+    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Color.White)) {
+        Row(Modifier.fillMaxWidth().background(C.Primary).padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("ตำแหน่งไรเดอร์แบบเรียลไทม์", fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = Color.White, modifier = Modifier.weight(1f))
+            Box(Modifier.clip(RoundedCornerShape(10.dp)).background(Color.White.copy(alpha = 0.2f)).padding(horizontal = 8.dp, vertical = 2.dp)) {
+                Text(online.size.toString() + " คนออนไลน์", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
+            }
+        }
+        AndroidView(
+            factory = { mapView },
+            update = { mv ->
+                mv.overlays.removeAll { it is Marker }
+                val pts = ArrayList<GeoPoint>()
+                for (r in online) {
+                    val lat: Double = (r.d["currentLat"] as? Number)?.toDouble() ?: continue
+                    val lng: Double = (r.d["currentLng"] as? Number)?.toDouble() ?: continue
+                    val gp = GeoPoint(lat, lng)
+                    pts.add(gp)
+                    val m = Marker(mv)
+                    m.position = gp
+                    m.title = if (r.name.isEmpty()) "ไรเดอร์" else r.name
+                    m.icon = riderPin(mv.context)
+                    m.setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
+                    mv.overlays.add(m)
+                }
+                if (pts.isNotEmpty() && !fitted[0]) {
+                    fitted[0] = true
+                    if (pts.size == 1) {
+                        mv.controller.setZoom(15.0)
+                        mv.controller.setCenter(pts[0])
+                    } else {
+                        mv.post { mv.zoomToBoundingBox(BoundingBox.fromGeoPoints(pts), false, 80) }
+                    }
+                }
+                mv.invalidate()
+            },
+            modifier = Modifier.fillMaxWidth().height(260.dp)
+        )
     }
 }
