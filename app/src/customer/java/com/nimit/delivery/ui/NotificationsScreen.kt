@@ -67,7 +67,10 @@ fun NotificationsScreen(session: Session, onBack: () -> Unit, onOpenOrder: (Stri
     var filter by remember { mutableStateOf("all") }
     val phone = remember { try { JSONObject(session.customerData ?: "{}").optString("phone") } catch (_: Exception) { "" }.ifEmpty { session.customerPhone.orEmpty() } }
 
-    LaunchedEffect(Unit) {
+    var reload by remember { mutableIntStateOf(0) }
+    // เรียลไทม์: แจ้งเตือนใหม่/สถานะออเดอร์เปลี่ยน โผล่เองไม่ต้องเข้าใหม่
+    LiveRefresh("notifications", if (phone.isNotEmpty()) Firebase.firestore.collection("orders").whereEqualTo("customer.phone", phone) else null) { reload++ }
+    LaunchedEffect(reload) {
         try {
             val db = Firebase.firestore
             val (news, orders) = coroutineScope {

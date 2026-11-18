@@ -56,7 +56,10 @@ fun CategoryScreen(session: Session, buttonId: String, onBack: () -> Unit, onOpe
     var popupShop by remember { mutableStateOf("") }
     val tagged = remember(tick, cart, buttonId) { taggedTotals(cart, buttonId) }
 
-    LaunchedEffect(buttonId) {
+    var reload by remember { mutableIntStateOf(0) }
+    // เรียลไทม์: ร้าน/เมนูในหมวดเปลี่ยน อัปเดตเอง
+    LiveRefresh("shops", "categoryButtons") { reload++ }
+    LaunchedEffect(buttonId, reload) {
         fun msg(t: String, s: String) { st = CatState(msgTitle = t, msgSub = s) }
         if (buttonId.isEmpty()) { msg("ไม่พบหมวดหมู่ที่ต้องการ", "ลองกลับไปหน้าร้านค้าแล้วกดใหม่อีกครั้ง"); return@LaunchedEffect }
         try {

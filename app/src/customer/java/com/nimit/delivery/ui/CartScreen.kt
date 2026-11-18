@@ -70,6 +70,16 @@ fun CartScreen(session: Session, onBack: () -> Unit, onShop: (String) -> Unit, o
         var s = 0.0; if (items != null) for (i in 0 until items.length()) s += items.getJSONObject(i).optDouble("price") * items.getJSONObject(i).optInt("qty"); s
     }
 
+    // เรียลไทม์: สถานะออเดอร์ในประวัติอัปเดตเอง
+    LiveRefresh(if (phone.isNotEmpty()) Firebase.firestore.collection("orders").whereEqualTo("customer.phone", phone) else null) {
+        if (orders != null) scope.launch {
+            orders = try {
+                Firebase.firestore.collection("orders").whereEqualTo("customer.phone", phone).get().await().documents
+                    .map { it.id to (it.data ?: emptyMap()) }
+                    .sortedByDescending { ((it.second["createdAt"] as? Timestamp)?.seconds ?: 0L) }
+            } catch (_: Exception) { orders }
+        }
+    }
     LaunchedEffect(tab) {
         if (tab == "history" && orders == null) {
             orders = try {

@@ -225,6 +225,20 @@ fun RingShopCard(
         }
     }
 
+    // เรียลไทม์: เมนู/ราคา/สถานะของหมด ที่ร้านแก้ไข อัปเดตในวงแหวนทันที
+    DisposableEffect(expanded, s.id) {
+        var reg: com.google.firebase.firestore.ListenerRegistration? = null
+        if (expanded) {
+            var first = true
+            reg = Firebase.firestore.collection("shops").document(s.id).collection("menus").addSnapshotListener { snap, err ->
+                if (err != null || snap == null) return@addSnapshotListener
+                if (first) { first = false; return@addSnapshotListener }
+                if (menus != null) menus = canonMenuCats(snap.documents.map { it.id to (it.data ?: emptyMap()) }, s.d["categories"])
+            }
+        }
+        onDispose { reg?.remove() }
+    }
+
     val shopCats = remember(s) { asMapList(s.d["categories"]).map { it.str("name") }.filter { it.isNotEmpty() } }
     val cats = remember(menus, shopCats) {
         listOf("ทั้งหมด") + (if (shopCats.isNotEmpty()) shopCats else (menus ?: emptyList()).map { it.second.str("category") }.filter { it.isNotEmpty() }.distinct())

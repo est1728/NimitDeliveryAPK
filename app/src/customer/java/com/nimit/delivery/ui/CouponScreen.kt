@@ -80,6 +80,8 @@ fun CouponScreen(session: Session, onBack: () -> Unit, onHome: () -> Unit, onHis
         } catch (e: Exception) { couponErr = e.message ?: "เกิดข้อผิดพลาด" }
     }
     LaunchedEffect(Unit) { loadCoupons() }
+    // เรียลไทม์: คูปองใหม่/หมด/เก็บแล้ว อัปเดตเอง
+    LiveRefresh("coupons", if (phone.isNotEmpty()) Firebase.firestore.collection("claimedCoupons").whereEqualTo("phone", phone) else null) { scope.launch { loadCoupons() } }
     LaunchedEffect(tab) {
         if (tab == "loyalty" && loyalty == null && loyaltyErr == null) {
             if (phone.isEmpty()) { loyalty = emptyList(); return@LaunchedEffect }

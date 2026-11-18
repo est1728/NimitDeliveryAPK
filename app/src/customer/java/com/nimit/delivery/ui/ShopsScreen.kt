@@ -1,6 +1,8 @@
 package com.nimit.delivery.ui
 
 import android.Manifest
+import com.google.firebase.Firebase
+import com.google.firebase.firestore.firestore
 import android.annotation.SuppressLint
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -147,6 +149,7 @@ fun ShopsScreen(session: Session, onOpenShop: (String, String) -> Unit, onNaviga
     val phone = customer.optString("phone").ifEmpty { session.customerPhone.orEmpty() }
     val loginText = if (customer.optString("name").isNotEmpty() && phone.isNotEmpty()) "${customer.optString("name")} · $phone" else phone.ifEmpty { "เข้าสู่ระบบ" }
 
+    var lastLoc by remember { mutableStateOf<android.location.Location?>(null) }
     suspend fun loadAll() = coroutineScope {
         launch { ads = ShopsRepo.ads() }
         launch { cats = ShopsRepo.categoryButtons() }
@@ -159,6 +162,7 @@ fun ShopsScreen(session: Session, onOpenShop: (String, String) -> Unit, onNaviga
         launch {
             ShopsRepo.refreshCustomer(session)
             val (list, zone) = ShopsRepo.shops(session)
+            lastLoc?.let { l -> list.forEach { s -> val la = s.d.dbl("lat"); val lo = s.d.dbl("lng"); if (la != null && lo != null) s.dist = ShopsRepo.distKm(l.latitude, l.longitude, la, lo) } }
             shops = list; loading = false
             if (zone != null && !zone.inside) zoneOut = true
             if (ContextCompat.checkSelfPermission(ctx, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
@@ -167,6 +171,7 @@ fun ShopsScreen(session: Session, onOpenShop: (String, String) -> Unit, onNaviga
                         LocationServices.getFusedLocationProviderClient(ctx).getCurrentLocation(Priority.PRIORITY_BALANCED_POWER_ACCURACY, null).await()
                     }
                     if (loc != null) {
+                        lastLoc = loc
                         list.forEach { s ->
                             val la = s.d.dbl("lat"); val lo = s.d.dbl("lng")
                             if (la != null && lo != null) s.dist = ShopsRepo.distKm(loc.latitude, loc.longitude, la, lo)
@@ -178,6 +183,14 @@ fun ShopsScreen(session: Session, onOpenShop: (String, String) -> Unit, onNaviga
         }
     }
     LaunchedEffect(Unit) { loadAll() }
+    // เรียลไทม์: ร้าน/โฆษณา/หมวด/ดีล/คูปอง/แจ้งเตือน/ออเดอร์/แบนเนอร์ เปลี่ยนที่ไหนก็อัปเดตหน้านี้ทันที
+    LiveRefresh(
+        "shops", "ads", "categoryButtons", "flashDeals", "coupons", "notifications",
+        "settings/appBanner", "settings/homeButtons",
+        if (phone.isNotEmpty()) Firebase.firestore.collection("orders").whereEqualTo("customer.phone", phone) else null,
+        if (phone.isNotEmpty()) Firebase.firestore.collection("claimedCoupons").whereEqualTo("phone", phone) else null,
+    ) { scope.launch { loadAll() } }
+    LiveRefresh("settings/theme") { scope.launch { AppTheme.sync(ctx) } }
     LaunchedEffect(Unit) { AppTheme.sync(ctx) }
     LaunchedEffect(Unit) {
         val pc = ShopsRepo.popupCfg()
