@@ -23,6 +23,7 @@ import androidx.compose.foundation.*
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -99,6 +100,7 @@ private object ShopsCache {
     var notif: Int = 0
     var order: Pair<String, Doc>? = null
     var bnr: Doc? = null
+    var hb: Doc? = null
     var svc: Doc? = null
 }
 
@@ -119,6 +121,7 @@ fun ShopsScreen(session: Session, onOpenShop: (String, String) -> Unit, onNaviga
     var notif by remember { mutableStateOf(if (warm) ShopsCache.notif else 0) }
     var order by remember { mutableStateOf<Pair<String, Doc>?>(if (warm) ShopsCache.order else null) }
     var bnr by remember { mutableStateOf<Doc?>(if (warm) ShopsCache.bnr else null) }
+    var hb by remember { mutableStateOf<Doc?>(if (warm) ShopsCache.hb else null) }
     var svc by remember { mutableStateOf<Doc?>(if (warm) ShopsCache.svc else null) }
     var loading by remember { mutableStateOf(!warm) }
     var popup by remember { mutableStateOf<Doc?>(null) }
@@ -127,7 +130,7 @@ fun ShopsScreen(session: Session, onOpenShop: (String, String) -> Unit, onNaviga
             ShopsCache.owner = session.customerPhone.orEmpty()
             ShopsCache.shops = shops; ShopsCache.ads = ads; ShopsCache.cats = cats; ShopsCache.flash = flash
             ShopsCache.coupons = coupons; ShopsCache.notif = notif; ShopsCache.order = order
-            ShopsCache.bnr = bnr; ShopsCache.svc = svc
+            ShopsCache.bnr = bnr; ShopsCache.svc = svc; ShopsCache.hb = hb
         }
     }
     var refreshing by remember { mutableStateOf(false) }
@@ -158,6 +161,7 @@ fun ShopsScreen(session: Session, onOpenShop: (String, String) -> Unit, onNaviga
         launch { notif = ShopsRepo.unreadNotifs(session.notifLastRead?.toLongOrNull() ?: 0L) }
         launch { order = ShopsRepo.activeOrder(phone) }
         launch { bnr = ShopsRepo.appBanner() }
+        launch { hb = ShopsRepo.homeBg() }
         launch { svc = ShopsRepo.homeButtons() }
         launch {
             ShopsRepo.refreshCustomer(session)
@@ -186,7 +190,7 @@ fun ShopsScreen(session: Session, onOpenShop: (String, String) -> Unit, onNaviga
     // เรียลไทม์: ร้าน/โฆษณา/หมวด/ดีล/คูปอง/แจ้งเตือน/ออเดอร์/แบนเนอร์ เปลี่ยนที่ไหนก็อัปเดตหน้านี้ทันที
     LiveRefresh(
         "shops", "ads", "categoryButtons", "flashDeals", "coupons", "notifications",
-        "settings/appBanner", "settings/homeButtons",
+        "settings/appBanner", "settings/homeButtons", "settings/homeBg",
         if (phone.isNotEmpty()) Firebase.firestore.collection("orders").whereEqualTo("customer.phone", phone) else null,
         if (phone.isNotEmpty()) Firebase.firestore.collection("claimedCoupons").whereEqualTo("phone", phone) else null,
     ) { scope.launch { loadAll() } }
@@ -244,8 +248,12 @@ fun ShopsScreen(session: Session, onOpenShop: (String, String) -> Unit, onNaviga
         }
     }
 
+    val hcfg = remember(hb) { HomeCfg(hb) }
+    val heroSlides = remember(hb, ads) { hcfg.slides(ads) }
+    val hero = heroSlides.isNotEmpty()
     val listState = rememberLazyListState()
-    val showSticky by remember { derivedStateOf { listState.firstVisibleItemIndex >= 1 } }
+    val stickyFrom = if (hero) 2 else 1
+    val showSticky by remember(hero) { derivedStateOf { listState.firstVisibleItemIndex >= stickyFrom } }
 
     val open = remember(shops, filters, favs, minuteTick) {
         var out = shops.toList()
@@ -265,9 +273,20 @@ fun ShopsScreen(session: Session, onOpenShop: (String, String) -> Unit, onNaviga
     val bnrItems = remember(bnr) { bannerItems(bnr) }
     val svcList = remember(svc) { serviceButtons(svc) }
     // ตำแหน่งหัวข้อ "ร้านทั้งหมด" ใน LazyColumn (ไว้ให้ปุ่มสั่งอาหารเลื่อนไป)
-    val shopsHdIdx = 2 + (if (order != null) 1 else 0) + (if (ads.isNotEmpty()) 1 else 0) + (if (svcList.isNotEmpty()) 1 else 0) +
-        (if (cats.isNotEmpty()) 1 else 0) + (if (coupons.isNotEmpty()) 1 else 0) + (if (liveFlash.isNotEmpty()) 1 else 0) +
-        (if (popular.isNotEmpty()) 1 else 0) + (if (bnrItems.isNotEmpty()) 1 else 0)
+    val shopsHdIdx = run {
+        var n = if (hero) 2 else 1
+        for (id in (if (hero) emptyList() else listOf("ads")) + hcfg.sectionOrder()) {
+            if (id == "shops") break
+            if (id in hcfg.hide) continue
+            val has = when (id) {
+                "slot" -> order != null; "ads" -> ads.isNotEmpty(); "svc" -> svcList.isNotEmpty(); "cat" -> cats.isNotEmpty()
+                "coupon" -> coupons.isNotEmpty(); "flash" -> liveFlash.isNotEmpty(); "pop" -> popular.isNotEmpty()
+                "bnr" -> bnrItems.isNotEmpty(); "flt" -> true; else -> false
+            }
+            if (has) n++
+        }
+        n
+    }
 
     Box(Modifier.fillMaxSize().background(N.Bg)) {
         PullToRefreshBox(
@@ -277,7 +296,28 @@ fun ShopsScreen(session: Session, onOpenShop: (String, String) -> Unit, onNaviga
         ) {
             LazyColumn(state = listState, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 96.dp)) {
                 // TOP BAR
-                item {
+                if (hero) {
+                    item(key = "hero") {
+                        HeroCarousel(hcfg, heroSlides, loginText,
+                            canAdvance = { listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset < 40 },
+                            onChip = { showAccounts = true }, onMenu = { sidebar = true }, onLink = { openLink(it, "") },
+                            onAd = { a -> if (a.str("shopId").isNotEmpty()) pick(a.str("shopId"), a.str("shopName")) else if (a.str("linkUrl").isNotEmpty()) openLink(a.str("linkUrl"), "") })
+                    }
+                    item(key = "pin") {
+                        Row(
+                            Modifier.topShift(-hcfg.lift).fillMaxWidth().background(N.Bg, RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp))
+                                .padding(start = 16.dp, end = 16.dp, top = if (hcfg.lift > 0f) 14.dp else 2.dp, bottom = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Box(Modifier.weight(1f)) { SearchBox { onNavigate("search") } }
+                            Box {
+                                Box(Modifier.size(46.dp).clip(RoundedCornerShape(16.dp)).background(Color.White).border(1.dp, N.Line, RoundedCornerShape(16.dp))
+                                    .clickable { notif = 0; onNavigate("notifications") }, contentAlignment = Alignment.Center) { PathIcon(P.BELL, N.B700, 21.dp) }
+                                if (notif > 0) Badge(if (notif > 99) "99+" else notif.toString(), Modifier.align(Alignment.TopEnd))
+                            }
+                        }
+                    }
+                } else item {
                     Box(
                         Modifier.fillMaxWidth().clip(RoundedCornerShape(bottomStart = 24.dp, bottomEnd = 24.dp))
                             .background(Brush.linearGradient(listOf(N.B900, N.B700)))
@@ -323,9 +363,10 @@ fun ShopsScreen(session: Session, onOpenShop: (String, String) -> Unit, onNaviga
                     }
                     }
                 }
-                // ACTIVE ORDER
+                val blocks = LinkedHashMap<String, LazyListScope.() -> Unit>()
+                blocks["slot"] = {
                 order?.let { (id, o) ->
-                    item {
+                    hitem(hcfg, "slot") {
                         val idx = ShopsRepo.activeStatuses.indexOf(o.str("status"))
                         Column(
                             Modifier.padding(start = 16.dp, end = 16.dp, top = 14.dp).fillMaxWidth()
@@ -349,16 +390,19 @@ fun ShopsScreen(session: Session, onOpenShop: (String, String) -> Unit, onNaviga
                         }
                     }
                 }
-                // ADS
-                if (ads.isNotEmpty()) item { AdsPager(ads, ::pick) { openLink(it, "") } }
-                // SERVICE BUTTONS (settings/homeButtons)
-                if (svcList.isNotEmpty()) item {
+                }
+                blocks["ads"] = {
+                if (!hero && ads.isNotEmpty()) item { AdsPager(ads, ::pick) { openLink(it, "") } }
+                }
+                blocks["svc"] = {
+                if (svcList.isNotEmpty()) hitem(hcfg, "svc") {
                     ServiceButtons(svcList, svc,
                         onFood = { scope.launch { listState.animateScrollToItem(shopsHdIdx) } },
                         onSoon = { Toast.makeText(ctx, "บริการนี้เร็วๆ นี้ — รอติดตามนะ", Toast.LENGTH_SHORT).show() })
                 }
-                // CATEGORIES
-                if (cats.isNotEmpty()) item {
+                }
+                blocks["cat"] = {
+                if (cats.isNotEmpty()) hitem(hcfg, "cat") {
                     SectionTitle("หมวดหมู่สินค้า", top = 18)
                     LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(15.dp)) {
                         items(cats) { (id, b) ->
@@ -374,12 +418,14 @@ fun ShopsScreen(session: Session, onOpenShop: (String, String) -> Unit, onNaviga
                         }
                     }
                 }
-                // COUPON BOX (การ์ดคูปองแบบตั๋ว)
-                if (coupons.isNotEmpty()) item {
+                }
+                blocks["coupon"] = {
+                if (coupons.isNotEmpty()) hitem(hcfg, "coupon") {
                     CouponBox(coupons, prefer, onAll = { onNavigate("coupon") }, onAct = { hc -> couponAct(hc) })
                 }
-                // FLASH
-                if (liveFlash.isNotEmpty()) item {
+                }
+                blocks["flash"] = {
+                if (liveFlash.isNotEmpty()) hitem(hcfg, "flash") {
                     Column(Modifier.padding(top = 18.dp)) {
                         Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 11.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -413,31 +459,17 @@ fun ShopsScreen(session: Session, onOpenShop: (String, String) -> Unit, onNaviga
                         }
                     }
                 }
-                // POPULAR
-                if (popular.isNotEmpty()) item {
-                    SectionTitle("ร้านแนะนำ", top = 18)
-                    LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(11.dp)) {
-                        items(popular) { s ->
-                            Column(Modifier.width(132.dp).clip(RoundedCornerShape(14.dp)).background(Color.White).border(1.dp, N.Line, RoundedCornerShape(14.dp)).clickable { pick(s.id, s.name) }) {
-                                Box(Modifier.fillMaxWidth().height(78.dp).background(N.B50), contentAlignment = Alignment.Center) {
-                                    if (s.bannerUrl.isNotEmpty()) AsyncImage(s.bannerUrl, null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
-                                    else PathIcon(P.RESTAURANT, N.B500.copy(alpha = 0.35f), 30.dp)
-                                }
-                                Column(Modifier.padding(9.dp)) {
-                                    Text(s.name, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = N.Ink900, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                    Row(Modifier.padding(top = 3.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
-                                        PathIcon(P.STAR, Color(0xFFF2A93C), 12.dp)
-                                        Text("%.1f · %s นาที%s".format(s.rating, s.deliveryTime, distTxt(s)), fontSize = 10.sp, color = N.Ink500, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                    }
-                                }
-                            }
-                        }
-                    }
                 }
-                // APP BANNER (settings/appBanner)
-                if (bnrItems.isNotEmpty()) item { BannerCarousel(bnrItems, (bnr?.dbl("sec") ?: 4.0).toInt()) { openLink(it, "") } }
-                // FILTERS
-                item {
+                blocks["pop"] = {
+                if (popular.isNotEmpty()) hitem(hcfg, "pop") {
+                    PopSection(hcfg, popular, favs, { pick(it.id, it.name) }, { toggleFav(it) }, { scope.launch { listState.animateScrollToItem(shopsHdIdx) } })
+                }
+                }
+                blocks["bnr"] = {
+                if (bnrItems.isNotEmpty()) hitem(hcfg, "bnr") { BannerCarousel(bnrItems, (bnr?.dbl("sec") ?: 4.0).toInt()) { openLink(it, "") } }
+                }
+                blocks["flt"] = {
+                hitem(hcfg, "flt") {
                     LazyRow(Modifier.padding(top = 16.dp), contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         items(FILTERS) { (key, label, icon) ->
                             val on = key in filters
@@ -453,8 +485,9 @@ fun ShopsScreen(session: Session, onOpenShop: (String, String) -> Unit, onNaviga
                         }
                     }
                 }
-                // SHOPS
-                item { SectionTitle(if (filters.size == 1 && "rec" in filters) "ร้านทั้งหมด" else "ร้านทั้งหมด (${open.size})", top = 16) }
+                }
+                blocks["shops"] = {
+                hitem(hcfg, "shops") { SectionTitle(if (filters.size == 1 && "rec" in filters) "ร้านทั้งหมด" else "ร้านทั้งหมด (${open.size})", top = 16) }
                 if (loading) items(3) { Box(Modifier.padding(horizontal = 16.dp, vertical = 6.dp).fillMaxWidth().height(190.dp).clip(RoundedCornerShape(20.dp)).background(N.B100)) }
                 items(openList, key = { it.id }) { s ->
                     Box(Modifier.padding(horizontal = 16.dp, vertical = 6.5.dp)) {
@@ -474,6 +507,10 @@ fun ShopsScreen(session: Session, onOpenShop: (String, String) -> Unit, onNaviga
                             else ShopCard(s, false, s.id in favs, {}, { toggleFav(s.id) }) {}
                         }
                     }
+                }
+                }
+                (if (hero) emptyList() else listOf("ads")).plus(hcfg.sectionOrder()).forEach { id ->
+                    if (id !in hcfg.hide) blocks[id]?.invoke(this)
                 }
             }
         }
@@ -627,6 +664,10 @@ private fun cartCount(session: Session): Int = try {
     }
 }
 
+private fun LazyListScope.hitem(cfg: HomeCfg, id: String, content: @Composable () -> Unit) {
+    item(key = "h_$id") { HSec(cfg, id, content) }
+}
+
 private object SbI {
     const val PIN = "M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5S10.62 6.5 12 6.5s2.5 1.12 2.5 2.5S13.38 11.5 12 11.5z"
     const val LOGOUT = "M16 17v-3H9v-4h7V7l5 5-5 5M14 2a2 2 0 0 1 2 2v2h-2V4H5v16h9v-2h2v2a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9z"
@@ -742,7 +783,7 @@ private fun adImg(a: Doc): String {
 }
 
 @Composable
-private fun AdImage(src: String, modifier: Modifier = Modifier) {
+internal fun AdImage(src: String, modifier: Modifier = Modifier, scale: ContentScale = ContentScale.Crop) {
     if (src.startsWith("data:image")) {
         val bmp by produceState<androidx.compose.ui.graphics.ImageBitmap?>(null, src) {
             value = withContext(Dispatchers.Default) {
@@ -752,8 +793,8 @@ private fun AdImage(src: String, modifier: Modifier = Modifier) {
                 } catch (_: Exception) { null }
             }
         }
-        bmp?.let { Image(it, null, contentScale = ContentScale.Crop, modifier = modifier) }
-    } else AsyncImage(src, null, contentScale = ContentScale.Crop, modifier = modifier)
+        bmp?.let { Image(it, null, contentScale = scale, modifier = modifier) }
+    } else AsyncImage(src, null, contentScale = scale, modifier = modifier)
 }
 
 @Composable
