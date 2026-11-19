@@ -1,5 +1,6 @@
 package com.nimit.delivery.ui
 
+import android.content.Context
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -27,12 +28,24 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.layout
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.text.font.Font
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.TextUnit
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import java.io.File
+import java.net.URL
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -57,10 +70,51 @@ private fun hexColor(v: Any?): Color? {
 
 private fun okUrl(u: String) = u.startsWith("https://") || u.startsWith("data:image/")
 
+/* ฟอนต์ไทยชุดเดียวกับเว็บ (homebg.js FONTS) — โหลดจาก Google Fonts ครั้งแรกแล้วเก็บในเครื่อง */
+private val HFONTS: Map<String, List<Int>?> = mapOf(
+    "Prompt" to listOf(500, 800), "Kanit" to listOf(500, 800), "Sarabun" to listOf(500, 800), "Mitr" to listOf(500, 700), "Pridi" to listOf(500, 700),
+    "Chonburi" to null, "Itim" to null, "Bai Jamjuree" to listOf(500, 700), "Sriracha" to null, "K2D" to listOf(500, 800), "Mali" to listOf(500, 700),
+    "Krub" to listOf(500, 700), "Taviraj" to listOf(500, 800), "Pattaya" to null, "Athiti" to listOf(500, 700), "Trirong" to listOf(500, 800),
+    "IBM Plex Sans Thai" to listOf(500, 700)
+)
+
+object HFonts {
+    val loaded = mutableStateMapOf<String, FontFamily>()
+    private val busy = HashSet<String>()
+    suspend fun ensure(ctx: Context, name: String) {
+        if (name in loaded || !HFONTS.containsKey(name)) return
+        synchronized(busy) { if (!busy.add(name)) return }
+        val fam = withContext(Dispatchers.IO) { try { fetch(ctx, name) } catch (_: Exception) { null } }
+        if (fam != null) loaded[name] = fam
+        synchronized(busy) { busy.remove(name) }
+    }
+    private fun fetch(ctx: Context, name: String): FontFamily? {
+        val ws = HFONTS[name] ?: listOf(400)
+        val dir = File(ctx.cacheDir, "hbfonts").apply { mkdirs() }
+        fun file(w: Int) = File(dir, name.replace(" ", "_") + "_" + w + ".ttf")
+        if (ws.all { file(it).let { f -> f.exists() && f.length() > 0 } }) return FontFamily(ws.map { Font(file(it), FontWeight(it)) })
+        val q = "family=" + name.replace(" ", "+") + (if (HFONTS[name] != null) ":wght@" + ws.joinToString(";") else "")
+        val ua = "Mozilla/5.0 (Linux; U; Android 2.2; en-us) AppleWebKit/533.1 (KHTML, like Gecko) Version/4.0 Mobile Safari/533.1"
+        val css = URL("https://fonts.googleapis.com/css2?$q&display=swap").openConnection().apply { setRequestProperty("User-Agent", ua); connectTimeout = 8000; readTimeout = 8000 }
+            .getInputStream().bufferedReader().readText()
+        val fonts = LinkedHashMap<Int, Font>()
+        for (b in css.split("@font-face").drop(1)) {
+            val w = Regex("font-weight:\\s*(\\d+)").find(b)?.groupValues?.get(1)?.toIntOrNull() ?: 400
+            val u = Regex("url\\((https[^)]+)\\)").find(b)?.groupValues?.get(1) ?: continue
+            if (w in fonts) continue
+            val f = file(w)
+            if (!f.exists() || f.length() == 0L) URL(u).openConnection().apply { connectTimeout = 8000; readTimeout = 15000 }.getInputStream().use { i -> f.outputStream().use { o -> i.copyTo(o) } }
+            fonts[w] = Font(f, FontWeight(w))
+        }
+        return if (fonts.isEmpty()) null else FontFamily(fonts.values.toList())
+    }
+}
+
 class HLayer(
     val isText: Boolean, val x: Float, val y: Float, val rot: Float, val op: Float, val vis: Boolean,
     val text: String = "", val color: Color = Color.White, val size: Float = 8f, val bold: Boolean = false, val sh: Float = 0f,
-    val url: String = "", val cover: Boolean = false, val ar: Float = 2f, val w: Float = 100f
+    val url: String = "", val cover: Boolean = false, val ar: Float = 2f, val w: Float = 100f,
+    val font: String = "Prompt", val sw: Float = 0f, val sc: Color = Color(0xFF0B2F86), val dp: Float = 0f, val dc: Color = Color(0xFF0B2F86)
 )
 
 class HBgSlide(val id: String, val bg: Color?, val bg2: Color?, val layers: List<HLayer>, val link: String)
@@ -105,7 +159,9 @@ class HomeCfg(private val c: Doc?) {
             if (l["t"] == "txt") {
                 val t = (l["text"] as? String).orEmpty().take(80)
                 if (t.isNotEmpty()) out.add(HLayer(true, x, y, rot, op, vis, text = t, color = hexColor(l["color"]) ?: Color.White, size = num(l["size"], 8f, 2f, 40f),
-                    bold = num(l["weight"], 500f, 0f, 1000f) >= 700f, sh = num(l["sh"], 40f, 0f, 100f)))
+                    bold = num(l["weight"], 500f, 0f, 1000f) >= 700f, sh = num(l["sh"], 40f, 0f, 100f),
+                    font = (l["font"] as? String)?.takeIf { HFONTS.containsKey(it) } ?: "Prompt", sw = num(l["sw"], 0f, 0f, 3f), sc = hexColor(l["sc"]) ?: Color(0xFF0B2F86),
+                    dp = num(l["dp"], 0f, 0f, 4f), dc = hexColor(l["dc"]) ?: Color(0xFF0B2F86)))
             } else {
                 val u = (l["url"] as? String).orEmpty()
                 if (okUrl(u)) out.add(HLayer(false, x, y, rot, op, vis, url = u, cover = l["cover"] == true, ar = num(l["ar"], 2f, 0.1f, 10f), w = num(l["w"], 100f, 5f, 400f)))
@@ -146,7 +202,7 @@ class HomeCfg(private val c: Doc?) {
             if (g != null) { bgSlide(id, g.second)?.let { out.add(HSlide(id, it, null)) }; return@forEach }
             val a = ads.firstOrNull { it.first == id }?.second ?: return@forEach
             val img = listOf("imgUrl", "imageUrl", "image", "img", "photo", "url", "banner").map { a.str(it) }.firstOrNull { it.isNotEmpty() }
-            if (img != null) out.add(HSlide(id, null, a))
+            if (img != null || (a.str("type") == "video" && a.str("videoUrl").isNotEmpty())) out.add(HSlide(id, null, a))
         }
         return out
     }
@@ -186,6 +242,8 @@ private val Navy = Color(0xFF071B3D)
 
 @Composable
 private fun HLayers(layers: List<HLayer>, arFrame: Float) {
+    val fctx = LocalContext.current
+    LaunchedEffect(layers) { layers.filter { it.isText }.map { it.font }.distinct().forEach { HFonts.ensure(fctx, it) } }
     BoxWithConstraints(Modifier.fillMaxSize().clipToBounds()) {
         val wPx = with(LocalDensity.current) { maxWidth.toPx() }
         val hPx = with(LocalDensity.current) { maxHeight.toPx() }
@@ -196,15 +254,53 @@ private fun HLayers(layers: List<HLayer>, arFrame: Float) {
             }.graphicsLayer { rotationZ = l.rot; alpha = l.op / 100f }
             if (l.isText) {
                 val fs = with(LocalDensity.current) { (wPx * l.size / 100f).toSp() }
-                Text(l.text, modifier = place, color = l.color, fontSize = fs, lineHeight = fs * 1.1f, maxLines = 1, softWrap = false,
-                    fontWeight = if (l.bold) FontWeight.ExtraBold else FontWeight.Medium,
-                    style = TextStyle(shadow = if (l.sh > 0f) Shadow(Navy.copy(alpha = l.sh / 130f), Offset(0f, 3f), l.sh / 25f * wPx / 100f) else null))
+                HText(l, wPx, fs, HFonts.loaded[l.font], place)
             } else {
                 val wp = if (l.cover) max(100f, 100f * l.ar / arFrame) else l.w
                 AdImage(l.url, place.width(with(LocalDensity.current) { (wPx * wp / 100f).toDp() }).aspectRatio(l.ar), ContentScale.FillBounds)
             }
         }
     }
+}
+
+@Composable
+private fun HText(l: HLayer, wPx: Float, fs: TextUnit, ff: FontFamily?, place: Modifier) {
+    val base = TextStyle(fontFamily = ff, fontSize = fs, lineHeight = fs * 1.1f, fontWeight = if (l.bold) FontWeight.ExtraBold else FontWeight.Medium)
+    val r = l.sw / 100f * wPx
+    Box(place) {
+        // ความลึก (เงาแข็งเฉียงลงขวา)
+        if (l.dp > 0f) {
+            val n = max(2, (l.dp * 6f).roundToInt()); val d0 = r * 0.7f
+            for (i in n downTo 1) {
+                val d = (d0 + l.dp / 100f * wPx * i / n).roundToInt()
+                Text(l.text, color = l.dc, style = base, maxLines = 1, softWrap = false, modifier = Modifier.offset { IntOffset(d, d) })
+            }
+        }
+        // ขอบตัวอักษร
+        if (r > 0f) Text(l.text, color = l.sc, maxLines = 1, softWrap = false, style = base.copy(drawStyle = Stroke(width = r * 2f, join = StrokeJoin.Round)))
+        Text(l.text, color = l.color, maxLines = 1, softWrap = false,
+            style = base.copy(shadow = if (l.sh > 0f) Shadow(Navy.copy(alpha = l.sh / 130f), Offset(0f, 3f), l.sh / 25f * wPx / 100f) else null))
+    }
+}
+
+@Composable
+private fun HeroVideo(url: String, modifier: Modifier = Modifier) {
+    AndroidView(factory = { ctx ->
+        android.widget.VideoView(ctx).apply {
+            setVideoURI(android.net.Uri.parse(url))
+            setOnPreparedListener { mp ->
+                mp.isLooping = true; mp.setVolume(0f, 0f)
+                val vw = mp.videoWidth.toFloat(); val vh = mp.videoHeight.toFloat()
+                if (vw > 0 && vh > 0 && width > 0 && height > 0) {
+                    val vr = vw / vh; val br = width.toFloat() / height
+                    val sc = if (vr > br) vr / br else br / vr
+                    scaleX = sc; scaleY = sc
+                }
+                start()
+            }
+            setOnErrorListener { _, _, _ -> true }
+        }
+    }, modifier = modifier, onRelease = { it.stopPlayback() })
 }
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -239,7 +335,8 @@ fun HeroCarousel(
                     } else {
                         val a = sl.ad!!
                         Box(Modifier.fillMaxSize().background(Color(0xFF0B2F86)).clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onAd(a) }) {
-                            AdImage(cfg.adImg(a), Modifier.fillMaxSize())
+                            if (cfg.adImg(a).isNotEmpty()) AdImage(cfg.adImg(a), Modifier.fillMaxSize())
+                            if (a.str("type") == "video" && a.str("videoUrl").isNotEmpty()) HeroVideo(a.str("videoUrl"), Modifier.fillMaxSize())
                             Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().fillMaxHeight(0.62f).background(Brush.verticalGradient(listOf(Color.Transparent, Navy.copy(alpha = 0.72f * cfg.shB)))))
                             val nm = a.str("shopName"); val tx = a.str("caption")
                             if (cfg.adCap && (nm.isNotEmpty() || tx.isNotEmpty())) Column(Modifier.align(Alignment.BottomStart).padding(start = 16.dp, end = 16.dp, bottom = w * 86f / 941f + 14.dp)) {
