@@ -89,6 +89,7 @@ class AdminOrdersStore(private val session: AdminSession) {
 
     fun start() {
         stop()
+        AdminCreateApi.warm()
         job = CoroutineScope(Dispatchers.Main).launch {
             try {
                 // เขตทั้งหมดในกลุ่มหลังบ้านเดียวกัน (ไม่ผูก = มีแค่เขตตัวเอง)

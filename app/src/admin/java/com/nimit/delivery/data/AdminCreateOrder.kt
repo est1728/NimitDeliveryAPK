@@ -3,6 +3,8 @@ package com.nimit.delivery.data
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
+import com.google.firebase.firestore.QuerySnapshot
+import com.google.firebase.firestore.Source
 import java.net.HttpURLConnection
 import java.net.URL
 import kotlinx.coroutines.CoroutineScope
@@ -157,7 +159,7 @@ object AdminCreateApi {
 
     fun defaultPricing(): AdminPricing = AdminPricing(38.0, 0.0, 10.0, 16.0, 9.0, emptyList(), emptyList(), emptyList())
 
-    suspend fun pricing(): AdminPricing {
+    private suspend fun fetchPricing(): AdminPricing {
         return try {
             val d = db.collection("settings").document("pricing").get().await()
             if (!d.exists()) return defaultPricing()
@@ -171,8 +173,7 @@ object AdminCreateApi {
         }
     }
 
-    suspend fun shops(): List<AdminShopRef> {
-        val snap = db.collection("shops").get().await()
+    private fun mapShops(snap: QuerySnapshot): List<AdminShopRef> {
         return snap.documents.map {
             AdminShopRef(
                 it.id, it.getString("name") ?: "", it.getString("phone") ?: "", it.getString("address") ?: "",
@@ -182,8 +183,7 @@ object AdminCreateApi {
         }
     }
 
-    suspend fun menus(shopId: String): List<AdminMenu> {
-        val snap = db.collection("shops").document(shopId).collection("menus").get().await()
+    private fun mapMenus(snap: QuerySnapshot): List<AdminMenu> {
         val out = ArrayList<AdminMenu>()
         for (d in snap.documents) {
             if (d.get("available") == false) continue
@@ -199,7 +199,7 @@ object AdminCreateApi {
     }
 
     /** รายชื่อลูกค้า: อ่านจาก customers ถ้าไม่ได้สิทธิ์ ใช้ข้อมูลลูกค้าจากออเดอร์ล่าสุด 500 ใบแทน */
-    suspend fun customers(): List<AdminCust> {
+    private suspend fun fetchCustomers(): List<AdminCust> {
         try {
             val snap = db.collection("customers").get().await()
             return snap.documents.map {
@@ -216,6 +216,61 @@ object AdminCreateApi {
             }
             return seen.values.toList()
         }
+    }
+
+    /* ===== แคชในเครื่อง (เปิดหน้าสร้างออเดอร์แล้วขึ้นทันที แล้วค่อยรีเฟรชเบื้องหลัง) ===== */
+    private val bg = CoroutineScope(Dispatchers.IO)
+    @Volatile private var shopsMem: List<AdminShopRef>? = null
+    @Volatile private var custMem: List<AdminCust>? = null
+    @Volatile private var pricingMem: AdminPricing? = null
+    private val menuMem = java.util.concurrent.ConcurrentHashMap<String, List<AdminMenu>>()
+    private val lastRefresh = java.util.concurrent.ConcurrentHashMap<String, Long>()
+
+    private fun refreshLater(key: String, job: suspend () -> Unit) {
+        val now = System.currentTimeMillis()
+        if (now - (lastRefresh[key] ?: 0L) < 20_000L) return
+        lastRefresh[key] = now
+        bg.launch { try { job() } catch (_: Exception) {} }
+    }
+
+    /** โหลดล่วงหน้าตอนเปิดแอพ ขนานกัน */
+    fun warm() {
+        bg.launch { try { shops() } catch (_: Exception) {} }
+        bg.launch { try { customers() } catch (_: Exception) {} }
+        bg.launch { try { pricing() } catch (_: Exception) {} }
+    }
+
+    suspend fun pricing(): AdminPricing {
+        pricingMem?.let { m -> refreshLater("pricing") { pricingMem = fetchPricing() }; return m }
+        val r = fetchPricing(); pricingMem = r; return r
+    }
+
+    suspend fun shops(): List<AdminShopRef> {
+        val server: suspend () -> Unit = { shopsMem = mapShops(db.collection("shops").get().await()) }
+        shopsMem?.let { refreshLater("shops", server); return it }
+        val c = try { db.collection("shops").get(Source.CACHE).await().takeIf { !it.isEmpty } } catch (_: Exception) { null }
+        if (c != null) { val r = mapShops(c); shopsMem = r; refreshLater("shops", server); return r }
+        server(); return shopsMem ?: emptyList()
+    }
+
+    suspend fun menus(shopId: String): List<AdminMenu> {
+        val col = db.collection("shops").document(shopId).collection("menus")
+        val server: suspend () -> Unit = { menuMem[shopId] = mapMenus(col.get().await()) }
+        menuMem[shopId]?.let { refreshLater("menu:$shopId", server); return it }
+        val c = try { col.get(Source.CACHE).await().takeIf { !it.isEmpty } } catch (_: Exception) { null }
+        if (c != null) { val r = mapMenus(c); menuMem[shopId] = r; refreshLater("menu:$shopId", server); return r }
+        server(); return menuMem[shopId] ?: emptyList()
+    }
+
+    suspend fun customers(): List<AdminCust> {
+        val server: suspend () -> Unit = { custMem = fetchCustomers() }
+        custMem?.let { refreshLater("cust", server); return it }
+        val c = try { db.collection("customers").get(Source.CACHE).await().takeIf { !it.isEmpty } } catch (_: Exception) { null }
+        if (c != null) {
+            val r = c.documents.map { AdminCust(it.id, it.getString("name") ?: "", it.getString("address") ?: "", (it.get("lat") as? Number)?.toDouble(), (it.get("lng") as? Number)?.toDouble()) }
+            custMem = r; refreshLater("cust", server); return r
+        }
+        server(); return custMem ?: emptyList()
     }
 
     fun randomOrderId(): String = "NM-" + (1000 + (Math.random() * 9000.0).toInt()).toString()

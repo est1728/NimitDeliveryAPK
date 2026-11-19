@@ -401,12 +401,14 @@ fun AdminOrderDetailScreen(orderId: String, onBack: () -> Unit, onChat: () -> Un
                         scope.launch {
                             try {
                                 if (isNext && target == "done") {
-                                    AdminOrderApi.completeDelivery(orderId, o.s("riderId"), o.s("riderName"))
+                                    kotlinx.coroutines.withTimeout(20_000L) { AdminOrderApi.completeDelivery(orderId, o.s("riderId"), o.s("riderName")) }
                                     dToast(ctx, "ออเดอร์เสร็จสิ้น")
                                     onBack()
                                 } else {
-                                    AdminOrderApi.advance(orderId, st, target)
+                                    AdminOrderApi.advanceFast(orderId, st, target) { e -> dToast(ctx, adminErrorText(e)) }
                                 }
+                            } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
+                                dToast(ctx, "เครือข่ายช้า ลองกดใหม่อีกครั้ง")
                             } catch (e: Exception) {
                                 dToast(ctx, adminErrorText(e))
                             }

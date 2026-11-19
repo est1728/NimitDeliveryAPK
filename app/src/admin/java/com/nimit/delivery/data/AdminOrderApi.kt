@@ -90,6 +90,15 @@ object AdminOrderApi {
         }).await()
     }
 
+    /** เปลี่ยนสถานะแบบเร็ว: ตรวจสถานะจากข้อมูลในเครื่อง แล้วเขียนทันที (UI อัปเดตเอง ไม่รอเซิร์ฟเวอร์ตอบ) ถ้าเขียนไม่สำเร็จเรียก onFail */
+    suspend fun advanceFast(orderDocId: String, from: String, to: String, onFail: (Exception) -> Unit) {
+        val ref = db.collection("orders").document(orderDocId)
+        val st: String? = try { ref.get(com.google.firebase.firestore.Source.CACHE).await().getString("status") } catch (_: Exception) { null }
+        if (st != null && st != from && st != to) throw AdminBizException("สถานะออเดอร์เปลี่ยนไปแล้ว")
+        if (st == to) return
+        ref.update("status", to, "updatedAt", FieldValue.serverTimestamp()).addOnFailureListener { onFail(it) }
+    }
+
     /** เลื่อน/ย้อนสถานะแบบ compare-and-set */
     suspend fun advance(orderDocId: String, from: String, to: String) {
         val ref = db.collection("orders").document(orderDocId)
