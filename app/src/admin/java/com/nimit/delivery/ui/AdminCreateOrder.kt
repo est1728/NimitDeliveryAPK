@@ -367,8 +367,8 @@ fun AdminCreateOrderScreen(store: AdminOrdersStore, onBack: () -> Unit, onCreate
             try { menus = AdminCreateApi.menus(sh.id) } catch (e: Exception) { menusError = e.message ?: "โหลดเมนูไม่สำเร็จ" }
         }
     }
-    LaunchedEffect(sheet) {
-        if (sheet == "cus" && customers == null) {
+    LaunchedEffect(Unit) {
+        if (customers == null) {
             cusError = null
             try { customers = AdminCreateApi.customers() } catch (e: Exception) { cusError = e.message ?: "โหลดรายชื่อลูกค้าไม่สำเร็จ" }
         }
@@ -641,7 +641,8 @@ fun AdminCreateOrderScreen(store: AdminOrdersStore, onBack: () -> Unit, onCreate
                     CMsg("กำลังโหลด...")
                 } else {
                     val q = cusQuery.trim().lowercase()
-                    val shown = if (q.isEmpty()) list else list.filter { it.name.lowercase().contains(q) || it.phone.contains(q) }
+                    // แสดงแค่ 40 รายแรกที่ตรงคำค้น (วาดทั้งคอลเลกชันพร้อมกันทำให้ค้าง) พิมพ์ชื่อ/เบอร์เพื่อหาเพิ่ม
+                    val shown = remember(list, q) { (if (q.isEmpty()) list else list.filter { it.name.lowercase().contains(q) || it.phone.contains(q) }).take(40) }
                     if (shown.isEmpty()) CMsg("ไม่พบลูกค้า")
                     for (c in shown) {
                         Row(
@@ -661,6 +662,7 @@ fun AdminCreateOrderScreen(store: AdminOrdersStore, onBack: () -> Unit, onCreate
                         }
                         HorizontalDivider(color = Color(0xFFF5F6F8))
                     }
+                    if (shown.size >= 40) CMsg("แสดง 40 รายแรก พิมพ์ชื่อหรือเบอร์เพื่อค้นหาเพิ่ม")
                 }
             }
         }
