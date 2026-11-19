@@ -31,23 +31,25 @@ private class ShopStoreHolder {
 }
 
 @Composable
-fun ShopNav() {
+fun ShopNav(embedShopId: String? = null, onExit: () -> Unit = {}) {
+    // embedShopId != null = แอปแอดมินเปิดร้านนี้ในแอป: ไม่ล็อกอิน ไม่แตะ session ของแอปร้าน ไม่เปิดเสียง/แจ้งเตือนของร้าน
+    val embed: Boolean = embedShopId != null
     val ctx = LocalContext.current
     val session = remember { ShopSession(ctx) }
     val nav = rememberNavController()
     val holder: ShopStoreHolder = remember {
         val h = ShopStoreHolder()
-        val id: String? = session.shopId
+        val id: String? = if (embed) embedShopId else session.shopId
         if (!id.isNullOrEmpty()) h.store = ShopStore(id)
         h
     }
-    val start: String = remember { if (session.shopId.isNullOrEmpty()) "login" else "home" }
+    val start: String = remember { if (embed || !session.shopId.isNullOrEmpty()) "home" else "login" }
     val cur: ShopStore? = holder.store
 
     DisposableEffect(cur) {
         val s: ShopStore? = cur
         if (s != null) {
-            s.onNewOrder = { o: ShopOrd ->
+            if (!embed) s.onNewOrder = { o: ShopOrd ->
                 s.banner.value = "🔔 ออเดอร์ใหม่! " + o.orderId + " · ฿" + com.nimit.delivery.data.shopNum(o.n("grandTotal"))
             }
             s.start()
@@ -61,6 +63,7 @@ fun ShopNav() {
         ShopAlertService.start(ctx)
     }
     LaunchedEffect(cur?.shopId) {
+        if (embed) return@LaunchedEffect
         if (cur != null) {
             val need: Boolean = android.os.Build.VERSION.SDK_INT >= 33 &&
                 androidx.core.content.ContextCompat.checkSelfPermission(ctx, android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED
@@ -72,7 +75,7 @@ fun ShopNav() {
     // เช็คทุก 30 วิ ว่าถึงเวลาเปิดร้านเองอัตโนมัติหรือยัง (ปิดยาว/ปิดชั่วคราว/ตารางเวลา) เหมือน checkAutoReopen ในเว็บ
     LaunchedEffect(cur) {
         val s: ShopStore? = cur
-        if (s != null) {
+        if (s != null && !embed) {
             while (true) {
                 ShopApi.autoReopenIfDue(s)
                 delay(30_000)
@@ -80,7 +83,7 @@ fun ShopNav() {
         }
     }
 
-    if (cur != null) ShopReadyGate()
+    if (cur != null && !embed) ShopReadyGate()
 
     // เปลี่ยนหน้า: เลื่อน + จาง ประมาณ 200ms
     NavHost(
@@ -113,6 +116,7 @@ fun ShopNav() {
                 onTerms = { nav.navigate("terms") },
                 onPrivacy = { nav.navigate("privacy") },
                 onLogout = {
+                    if (embed) { onExit(); return@ShopHome }
                     ShopFcm.unregister(ctx, s.shopId)
                     session.logout()
                     try { com.google.firebase.auth.FirebaseAuth.getInstance().signOut() } catch (e: Exception) { }
@@ -139,4 +143,5 @@ fun ShopNav() {
         }
         reviewsRoute(nav)
     }
+    if (embed) androidx.activity.compose.BackHandler { if (nav.previousBackStackEntry != null) nav.popBackStack() else onExit() }
 }

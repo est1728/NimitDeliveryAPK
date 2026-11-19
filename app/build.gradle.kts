@@ -53,6 +53,11 @@ android {
             signingConfig = if (System.getenv("UPLOAD_KEYSTORE_PATH") != null) signingConfigs.getByName("upload") else signingConfigs.getByName("nimit")
         }
     }
+    // หน้าร้านค้าใช้ร่วมกัน: แอปร้านค้า + แอปแอดมิน (แอดมินเข้าร้านได้ในแอปโดยไม่ต้องล็อกอิน)
+    sourceSets {
+        getByName("shop") { java.srcDir("src/shopcore/java"); res.srcDir("src/shopcore/res") }
+        getByName("admin") { java.srcDir("src/shopcore/java"); res.srcDir("src/shopcore/res") }
+    }
     lint { checkReleaseBuilds = false }
     buildFeatures { compose = true }
     compileOptions {

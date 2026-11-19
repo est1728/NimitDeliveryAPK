@@ -77,6 +77,7 @@ fun AdminHome(s: AdminSession, onLogout: () -> Unit) {
     var showSidebar by remember { mutableStateOf(false) }
     var sidePage by remember { mutableStateOf("") }
     var creating by remember { mutableStateOf(false) }
+    var shopEnter by remember { mutableStateOf<String?>(null) }
     var editId by remember { mutableStateOf<String?>(null) }
     val store = remember(s.franchiseId) { AdminOrdersStore(s) }
     var showBattery by remember { mutableStateOf(false) }
@@ -105,7 +106,10 @@ fun AdminHome(s: AdminSession, onLogout: () -> Unit) {
     val cid = chatId
     val oid = openId
     val eid = editId
-    if (creating) {
+    val shopIn = shopEnter
+    if (shopIn != null) {
+        Box(Modifier.fillMaxSize().statusBarsPadding()) { ShopNav(embedShopId = shopIn, onExit = { shopEnter = null }) }
+    } else if (creating) {
         BackHandler { creating = false }
         Box(Modifier.fillMaxSize().statusBarsPadding()) {
             AdminCreateOrderScreen(store, onBack = { creating = false }, onCreated = { creating = false })
@@ -140,7 +144,7 @@ fun AdminHome(s: AdminSession, onLogout: () -> Unit) {
                     )
                 } else {
                     Box(Modifier.fillMaxSize().statusBarsPadding(), contentAlignment = Alignment.Center) {
-                        if (tab == 5) AdminSettingsPanel() else if (tab == 1) AdminHistoryPage(store, onOpen = { openId = it }, onRecalled = { tab = 0 }) else if (tab == 2) AdminShopsPage(store, s.franchiseId) else if (tab == 3) AdminRidersPage() else Text("หน้า" + AdminMenu[tab] + "อยู่ระหว่างพัฒนา", fontSize = 13.sp, color = C.Subtext)
+                        if (tab == 5) AdminSettingsPanel() else if (tab == 1) AdminHistoryPage(store, onOpen = { openId = it }, onRecalled = { tab = 0 }) else if (tab == 2) AdminShopsPage(store, s.franchiseId, onEnterShop = { shopEnter = it }) else if (tab == 3) AdminRidersPage() else Text("หน้า" + AdminMenu[tab] + "อยู่ระหว่างพัฒนา", fontSize = 13.sp, color = C.Subtext)
                     }
                 }
             }

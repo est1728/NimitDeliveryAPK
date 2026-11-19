@@ -85,7 +85,7 @@ private fun sOpenUrl(ctx: Context, url: String) {
 }
 
 @Composable
-fun AdminShopsPage(store: AdminOrdersStore, ownZoneId: String) {
+fun AdminShopsPage(store: AdminOrdersStore, ownZoneId: String, onEnterShop: (String) -> Unit = {}) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     var shops by remember { mutableStateOf<List<AdminShop>?>(null) }
@@ -191,7 +191,8 @@ fun AdminShopsPage(store: AdminOrdersStore, ownZoneId: String) {
                             fZones.clear(); fZones.addAll(s.zones())
                             showForm = true
                         },
-                        onDelete = { deleteFor = s }
+                        onDelete = { deleteFor = s },
+                        onEnter = { onEnterShop(s.id) }
                     )
                 }
             }
@@ -390,7 +391,7 @@ private fun SChoice(title: String, sub: String, onClick: () -> Unit) {
 @Composable
 private fun ShopCard(
     s: AdminShop, store: AdminOrdersStore,
-    onToggleOpen: () -> Unit, onToggleType: () -> Unit, onEdit: () -> Unit, onDelete: () -> Unit
+    onToggleOpen: () -> Unit, onToggleType: () -> Unit, onEdit: () -> Unit, onDelete: () -> Unit, onEnter: () -> Unit
 ) {
     val ctx = LocalContext.current
     val zones: List<String> = s.zones()
@@ -401,7 +402,7 @@ private fun ShopCard(
         Modifier.fillMaxWidth().alpha(if (s.isOpen) 1f else 0.6f).clip(RoundedCornerShape(22.dp)).background(Color.White)
             .border(BorderStroke(1.5.dp, SBorder), RoundedCornerShape(22.dp))
     ) {
-        Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.Top) {
+        Row(Modifier.fillMaxWidth().clickable { onEnter() }.padding(16.dp), verticalAlignment = Alignment.Top) {
             Box(
                 Modifier.size(60.dp).clip(CircleShape).background(Brush.linearGradient(listOf(C.Primary, Color(0xFF1565C0)))),
                 contentAlignment = Alignment.Center
@@ -451,12 +452,12 @@ private fun ShopCard(
                 ) { Icon(AdminIcEdit, null, tint = SGreen, modifier = Modifier.size(24.dp)) }
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, offset = DpOffset(0.dp, (-260).dp)) {
                     DropdownMenuItem(
-                        text = { Text("เปิดหน้าร้าน (เว็บ)") }, leadingIcon = { Icon(AdminIcEye, null, tint = C.Primary) },
-                        onClick = { menu = false; sOpenUrl(ctx, link) }
+                        text = { Text("เข้าร้านนี้ (จัดการเมนู/ออเดอร์)") }, leadingIcon = { Icon(AdminIcEye, null, tint = C.Primary) },
+                        onClick = { menu = false; onEnter() }
                     )
                     DropdownMenuItem(
-                        text = { Text("จัดการเมนู (เว็บ)") }, leadingIcon = { Icon(AdminIcDoc, null, tint = SGreen) },
-                        onClick = { menu = false; sOpenUrl(ctx, WEB_BASE + "/shop-manage.html?id=" + s.slug) }
+                        text = { Text("เปิดหน้าร้าน (เว็บ)") }, leadingIcon = { Icon(AdminIcDoc, null, tint = SGreen) },
+                        onClick = { menu = false; sOpenUrl(ctx, link) }
                     )
                     DropdownMenuItem(
                         text = { Text("แก้ไขข้อมูลร้าน") }, leadingIcon = { Icon(AdminIcEdit, null, tint = C.Primary) },
