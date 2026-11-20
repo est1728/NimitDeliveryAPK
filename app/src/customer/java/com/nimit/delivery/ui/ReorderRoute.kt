@@ -13,7 +13,8 @@ fun NavGraphBuilder.reorderRoute(session: Session, nav: NavHostController) {
             onHome = { nav.popBackStack("shops", false) },
             onCoupon = { nav.navigate("coupon") },
             onLogin = { session.loginReturnRoute = "reorder"; nav.navigate("login") },
-            onCart = { nav.navigate("cart") }
+            onCart = { nav.navigate("cart") },
+            onSocial = { nav.navigate("social") }
         )
     }
 }

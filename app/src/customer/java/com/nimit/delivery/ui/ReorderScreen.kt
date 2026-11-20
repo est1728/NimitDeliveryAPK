@@ -56,7 +56,7 @@ private fun dateText(ms: Long): String {
 }
 
 @Composable
-fun ReorderScreen(session: Session, onBack: () -> Unit, onHome: () -> Unit, onCoupon: () -> Unit, onLogin: () -> Unit, onCart: () -> Unit) {
+fun ReorderScreen(session: Session, onBack: () -> Unit, onHome: () -> Unit, onCoupon: () -> Unit, onLogin: () -> Unit, onCart: () -> Unit, onSocial: () -> Unit = {}) {
     val ctx = LocalContext.current
     val phone = remember { try { JSONObject(session.customerData ?: "{}").optString("phone") } catch (_: Exception) { "" }.ifEmpty { session.customerPhone.orEmpty() } }
     var orders by remember { mutableStateOf<List<RO>>(emptyList()) }
@@ -206,7 +206,7 @@ fun ReorderScreen(session: Session, onBack: () -> Unit, onHome: () -> Unit, onCo
             RNav(P.HOME, "หน้าหลัก", false, Modifier.weight(1f)) { onHome() }
             RNav(P.HISTORY, "ประวัติ", true, Modifier.weight(1f)) {}
             RNav(P.TAG, "คูปอง", false, Modifier.weight(1f)) { onCoupon() }
-            RNav(P.SOCIAL, "โซเชียล", false, Modifier.weight(1f).alpha(0.55f)) { Toast.makeText(ctx, "ระบบโซเชียลเร็วๆ นี้ครับ", Toast.LENGTH_SHORT).show() }
+            RNav(P.SOCIAL, "โซเชียล", false, Modifier.weight(1f)) { onSocial() }
         }
     }
 }

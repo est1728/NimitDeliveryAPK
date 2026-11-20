@@ -57,7 +57,7 @@ private class Loy(val shopName: String, val points: Int, val target: Int, val av
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun CouponScreen(session: Session, onBack: () -> Unit, onHome: () -> Unit, onHistory: () -> Unit, onLogin: () -> Unit) {
+fun CouponScreen(session: Session, onBack: () -> Unit, onHome: () -> Unit, onHistory: () -> Unit, onLogin: () -> Unit, onSocial: () -> Unit = {}) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     val phone = remember { try { JSONObject(session.customerData ?: "{}").optString("phone") } catch (_: Exception) { "" }.ifEmpty { session.customerPhone.orEmpty() } }
@@ -230,7 +230,7 @@ fun CouponScreen(session: Session, onBack: () -> Unit, onHome: () -> Unit, onHis
             BNav(P.HOME, "หน้าหลัก", false, Modifier.weight(1f)) { onHome() }
             BNav(P.HISTORY, "ประวัติ", false, Modifier.weight(1f)) { onHistory() }
             BNav(P.TAG, "คูปอง", true, Modifier.weight(1f)) {}
-            BNav(P.SOCIAL, "โซเชียล", false, Modifier.weight(1f).alpha(0.55f)) { Toast.makeText(ctx, "ระบบโซเชียลเร็วๆ นี้ครับ", Toast.LENGTH_SHORT).show() }
+            BNav(P.SOCIAL, "โซเชียล", false, Modifier.weight(1f)) { onSocial() }
         }
     }
 }

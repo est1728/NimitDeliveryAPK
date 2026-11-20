@@ -104,6 +104,7 @@ fun NimitNav() {
         reorderRoute(session, nav)
         chatRoute(session, nav)
         reviewsRoute(nav)
+        socialRoute(session, nav)
         pendingRoutes.forEach { r ->
             composable(r) { Pending(r) { nav.popBackStack() } }
         }

@@ -548,7 +548,7 @@ fun ShopsScreen(session: Session, onOpenShop: (String, String) -> Unit, onNaviga
                 }
             }
             NavItem(P.TICKET, "คูปอง", false, Modifier.weight(1f)) { onNavigate("coupon") }
-            NavItem(P.SOCIAL, "โซเชียล", false, Modifier.weight(1f).alpha(0.45f)) { Toast.makeText(ctx, "ระบบโซเชียลเร็วๆ นี้ครับ", Toast.LENGTH_SHORT).show() }
+            NavItem(P.SOCIAL, "โซเชียล", false, Modifier.weight(1f)) { onNavigate("social") }
         }
 
         // SIDEBAR

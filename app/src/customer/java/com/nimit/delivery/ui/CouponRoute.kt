@@ -12,7 +12,8 @@ fun NavGraphBuilder.couponRoute(session: Session, nav: NavHostController) {
             onBack = { nav.popBackStack() },
             onHome = { nav.popBackStack("shops", false) },
             onHistory = { nav.navigate("reorder") },
-            onLogin = { nav.navigate("login") }
+            onLogin = { nav.navigate("login") },
+            onSocial = { nav.navigate("social") }
         )
     }
 }
