@@ -1,5 +1,8 @@
 package com.nimit.delivery.ui
 
+import androidx.navigation.NavController
+import androidx.navigation.NavGraphBuilder
+import androidx.navigation.compose.composable
 import android.annotation.SuppressLint
 import android.net.Uri
 import android.webkit.ValueCallback
@@ -61,6 +64,6 @@ fun SocialScreen(session: Session, onBack: () -> Unit) {
     }
 }
 
-fun androidx.navigation.NavGraphBuilder.socialRoute(session: Session, nav: androidx.navigation.NavController) {
-    androidx.navigation.compose.composable("social") { SocialScreen(session) { nav.popBackStack() } }
+fun NavGraphBuilder.socialRoute(session: Session, nav: NavController) {
+    composable("social") { SocialScreen(session) { nav.popBackStack() } }
 }
