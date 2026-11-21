@@ -305,7 +305,7 @@ fun ShopsScreen(session: Session, onOpenShop: (String, String) -> Unit, onNaviga
                     }
                     item(key = "pin") {
                         Row(
-                            Modifier.topShift(-hcfg.lift).fillMaxWidth().background(N.Bg, RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp))
+                            Modifier.topShift(-hcfg.lift).fillMaxWidth().waveEdge(N.Bg)
                                 .padding(start = 16.dp, end = 16.dp, top = if (hcfg.lift > 0f) 14.dp else 2.dp, bottom = 10.dp),
                             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
