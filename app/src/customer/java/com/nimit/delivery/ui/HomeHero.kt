@@ -319,7 +319,11 @@ fun HeroCarousel(
                 if (System.currentTimeMillis() > hold && !pager.isScrollInProgress && canAdvance()) pager.animateScrollToPage(pager.currentPage + 1)
             }
         }
-        BoxWithConstraints(Modifier.fillMaxWidth().aspectRatio(100f / cfg.heroH).clipToBounds().background(Brush.linearGradient(listOf(N.B900, N.B700)))) {
+        val sb = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+        BoxWithConstraints(Modifier.fillMaxWidth().layout { m, c ->
+            val wd = c.maxWidth; val h = (wd * cfg.heroH / 100f).roundToInt() + sb.roundToPx()
+            val pl = m.measure(Constraints.fixed(wd, h)); layout(wd, h) { pl.place(0, 0) }
+        }.clipToBounds().background(Brush.linearGradient(listOf(N.B900, N.B700)))) {
             val w = maxWidth
             HorizontalPager(pager, Modifier.fillMaxSize().pointerInput(Unit) {
                 awaitEachGesture { awaitFirstDown(requireUnconsumed = false); hold = System.currentTimeMillis() + 10_000 }
@@ -330,7 +334,7 @@ fun HeroCarousel(
                     if (bg != null) {
                         val br = if (bg.bg != null) (if (bg.bg2 != null) Brush.linearGradient(listOf(bg.bg, bg.bg2)) else Brush.linearGradient(listOf(bg.bg, bg.bg))) else Brush.linearGradient(listOf(N.B900, N.B700))
                         Box(Modifier.fillMaxSize().background(br).then(if (bg.link.isNotEmpty()) Modifier.clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onLink(bg.link) } else Modifier)) {
-                            HLayers(bg.layers, 100f / cfg.heroH)
+                            Box(Modifier.fillMaxSize().padding(top = sb)) { HLayers(bg.layers, 100f / cfg.heroH) }
                         }
                     } else {
                         val a = sl.ad!!
@@ -352,7 +356,7 @@ fun HeroCarousel(
                 }
             }
             // เงาด้านบน (ให้ปุ่มอ่านออก)
-            Box(Modifier.fillMaxWidth().height(84.dp).background(Brush.verticalGradient(listOf(Navy.copy(alpha = 0.34f * cfg.shT), Color.Transparent))))
+            Box(Modifier.fillMaxWidth().height(84.dp + sb).background(Brush.verticalGradient(listOf(Navy.copy(alpha = 0.34f * cfg.shT), Color.Transparent))))
             // จุดบอกหน้า
             if (n > 1) Row(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(bottom = w * 46f / 941f + cfg.lift.dp), horizontalArrangement = Arrangement.Center) {
                 val cur = pager.currentPage % n
@@ -360,7 +364,7 @@ fun HeroCarousel(
             }
             // ปุ่มปักหมุด (ซ้ายบน)
             Row(
-                Modifier.align(Alignment.TopStart).padding(start = 16.dp, top = 17.dp).widthIn(max = w - 84.dp)
+                Modifier.align(Alignment.TopStart).padding(start = 16.dp, top = 17.dp + sb).widthIn(max = w - 84.dp)
                     .graphicsLayer {
                         translationX = cfg.pin.x * density; translationY = cfg.pin.y * density
                         scaleX = cfg.pin.s; scaleY = cfg.pin.s; transformOrigin = TransformOrigin(0f, 0f)
@@ -375,7 +379,7 @@ fun HeroCarousel(
             }
             // ปุ่มเมนู (ขวาบน)
             Box(
-                Modifier.align(Alignment.TopEnd).padding(end = 16.dp, top = 14.dp)
+                Modifier.align(Alignment.TopEnd).padding(end = 16.dp, top = 14.dp + sb)
                     .graphicsLayer {
                         translationX = cfg.menu.x * density; translationY = cfg.menu.y * density
                         scaleX = cfg.menu.s; scaleY = cfg.menu.s; transformOrigin = TransformOrigin(1f, 0f)
