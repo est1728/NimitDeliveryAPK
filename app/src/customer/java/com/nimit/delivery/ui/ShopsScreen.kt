@@ -187,6 +187,11 @@ fun ShopsScreen(session: Session, onOpenShop: (String, String) -> Unit, onNaviga
         }
     }
     LaunchedEffect(Unit) { loadAll() }
+    // แผงสถานะออเดอร์: ฟังสดโดยตรง อัปเดตทันทีที่ไรเดอร์เปลี่ยนสถานะ / มีออเดอร์ใหม่ (ไม่ต้องรอโหลดทั้งหน้า)
+    DisposableEffect(phone) {
+        val reg = if (phone.isNotEmpty()) ShopsRepo.listenActive(phone) { order = it } else null
+        onDispose { reg?.remove() }
+    }
     // เรียลไทม์: ร้าน/โฆษณา/หมวด/ดีล/คูปอง/แจ้งเตือน/ออเดอร์/แบนเนอร์ เปลี่ยนที่ไหนก็อัปเดตหน้านี้ทันที
     LiveRefresh(
         "shops", "ads", "categoryButtons", "flashDeals", "coupons", "notifications",

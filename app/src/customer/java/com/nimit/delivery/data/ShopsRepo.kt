@@ -146,9 +146,20 @@ object ShopsRepo {
 
     val activeStatuses = listOf("pending", "accepted", "picking", "arrived", "delivering")
     val statusLabel = mapOf(
-        "pending" to "รอรับออเดอร์", "accepted" to "รับงานแล้ว", "picking" to "ไรเดอร์กำลังไปร้าน",
-        "arrived" to "ถึงร้านแล้ว", "delivering" to "ไรเดอร์กำลังส่งมาหาคุณ"
+        "pending" to "รอรับงาน", "accepted" to "รับงานแล้ว", "picking" to "กำลังไปที่ร้าน",
+        "arrived" to "อยู่ที่ร้านแล้ว", "delivering" to "กำลังขับไปหาลูกค้า", "done" to "สำเร็จ"
     )
+
+    /** ฟังออเดอร์ของลูกค้าแบบเรียลไทม์ → ส่งออเดอร์ที่ยังดำเนินอยู่ล่าสุด (หรือ null) ทุกครั้งที่เปลี่ยน */
+    fun listenActive(phone: String, onChange: (Pair<String, Doc>?) -> Unit): com.google.firebase.firestore.ListenerRegistration =
+        db.collection("orders").whereEqualTo("customer.phone", phone).addSnapshotListener { snap, err ->
+            if (err != null || snap == null) return@addSnapshotListener
+            onChange(
+                snap.documents.filter { it.getString("status") in activeStatuses }
+                    .maxByOrNull { (it.get("createdAt") as? Timestamp)?.toDate()?.time ?: 0L }
+                    ?.let { it.id to (it.data ?: emptyMap()) }
+            )
+        }
 
     suspend fun activeOrder(phone: String?): Pair<String, Doc>? {
         if (phone.isNullOrEmpty()) return null

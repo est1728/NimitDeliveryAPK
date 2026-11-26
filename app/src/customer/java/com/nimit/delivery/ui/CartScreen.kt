@@ -39,8 +39,8 @@ private val PRIMARY_DARK = Color(0xFF083570)
 private val BG = Color(0xFFF0F2F7)
 private val RED = Color(0xFFDC2626)
 private val STATUS = mapOf(
-    "pending" to "รอรับ", "accepted" to "รับแล้ว", "picking" to "ไรเดอร์มา", "arrived" to "ถึงร้าน",
-    "delivering" to "กำลังส่ง", "done" to "เสร็จสิ้น", "rejected" to "ปฏิเสธ", "cancelled" to "ยกเลิก"
+    "pending" to "รอรับงาน", "accepted" to "รับงานแล้ว", "picking" to "กำลังไปที่ร้าน", "arrived" to "อยู่ที่ร้านแล้ว",
+    "delivering" to "กำลังขับไปหาลูกค้า", "done" to "สำเร็จ", "rejected" to "ปฏิเสธ", "cancelled" to "ยกเลิก"
 )
 
 @Composable
