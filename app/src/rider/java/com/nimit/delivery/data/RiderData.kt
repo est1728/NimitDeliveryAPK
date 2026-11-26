@@ -124,12 +124,12 @@ class RiderStore(val riderId: String) {
 
     fun start() {
         stop()
-        regs.add(db.collection("riders").document(riderId).addSnapshotListener { s, _ ->
-            val m: Map<String, Any>? = s?.data
+        regs.add(db.collection("riders").document(riderId).listenRetry { s ->
+            val m: Map<String, Any>? = s.data
             if (m != null) rider.value = m
         })
-        regs.add(db.collection("orders").whereEqualTo("riderId", riderId).addSnapshotListener { snap, _ ->
-            if (snap != null) {
+        regs.add(db.collection("orders").whereEqualTo("riderId", riderId).listenRetry { snap ->
+            run {
                 val list: List<Ord> = snap.documents
                     .map { x: DocumentSnapshot -> Ord(x.id, x.data ?: emptyMap()) }
                     .sortedByDescending { it.created?.time ?: 0L }
@@ -137,8 +137,8 @@ class RiderStore(val riderId: String) {
                 syncChats(list)
             }
         })
-        regs.add(db.collection("orders").whereEqualTo("status", "pending").addSnapshotListener { snap, _ ->
-            if (snap != null) {
+        regs.add(db.collection("orders").whereEqualTo("status", "pending").listenRetry { snap ->
+            run {
                 val list: List<Ord> = snap.documents
                     .map { x: DocumentSnapshot -> Ord(x.id, x.data ?: emptyMap()) }
                     .sortedByDescending { it.created?.time ?: 0L }

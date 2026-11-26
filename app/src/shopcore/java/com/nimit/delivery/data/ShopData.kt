@@ -186,8 +186,8 @@ class ShopStore(val shopId: String) {
 
     fun start() {
         stop()
-        shopReg = db.collection("shops").document(shopId).addSnapshotListener { s, _ ->
-            val m: Map<String, Any>? = s?.data
+        shopReg = db.collection("shops").document(shopId).listenRetry { s ->
+            val m: Map<String, Any>? = s.data
             if (m != null) {
                 shop.value = m
                 shopLoaded.value = true
@@ -204,8 +204,8 @@ class ShopStore(val shopId: String) {
         curIds = ids
         known.clear()
         ordersLoaded = false
-        ordReg = db.collection("orders").whereIn("shopId", ids).addSnapshotListener { snap, _ ->
-            if (snap != null) {
+        ordReg = db.collection("orders").whereIn("shopId", ids).listenRetry { snap ->
+            run {
                 val list: List<ShopOrd> = snap.documents
                     .map { x: DocumentSnapshot -> ShopOrd(x.id, x.data ?: emptyMap()) }
                     .sortedByDescending { it.created?.time ?: 0L }

@@ -131,9 +131,8 @@ class AdminOrdersStore(private val session: AdminSession) {
                         }
                     })
                 }
-                regs.add(db.collection("orders").whereIn("status", ADMIN_ACTIVE).addSnapshotListener { snap, e ->
-                    if (e != null) error.value = e.message
-                    if (snap != null) {
+                regs.add(db.collection("orders").whereIn("status", ADMIN_ACTIVE).listenRetry({ e -> error.value = e.message }) { snap ->
+                    run {
                         orders.value = snap.documents
                             .map { x -> AdminOrd(x.id, x.data ?: emptyMap()) }
                             .sortedBy { it.created?.time ?: 0L }
